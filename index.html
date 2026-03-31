@@ -572,9 +572,11 @@ let gpsId = null, gpsLast = null, gpsTime = null, gpsDist = 0, gpsPace = 0;
 let gpsPositions = [], gpsAcc = null;
 let aiBusy = false;
 let wakeLock = null;
+let currentRunId = null; // set at run start, used by coach log
 let voiceOn = true;
 let alerts = [];
 const HIST_KEY = 'paceai_runs_v1';
+const LOG_KEY  = 'paceai_coach_log_v1';
 
 // ── SCREEN ROUTER ─────────────────────────────────────────
 function go(id) {
@@ -810,7 +812,10 @@ ONE sharp coaching instruction, 1–2 sentences. Reference actual numbers. Exper
     });
     if(res.ok){
       const d=await res.json(), t=d.content?.find(b=>b.type==='text')?.text||'';
-      if(t) addAlert('ai','🤖',t,true);
+      if(t) {
+        addAlert('ai','🤖',t,true);
+        logCoachEvent(trigger, t);
+      }
     } else if(res.status===401){ addAlert('warn','🔑','Invalid API key — check Settings.'); }
     else if(res.status===429){ addAlert('warn','⏳','Rate limit — will retry next check-in.'); }
     else { addAlert('warn','⚠️',`AI error ${res.status}`); }
@@ -974,6 +979,7 @@ function startRun(demoMode) {
       impact:0,gct:0,fatigue:0,hrF:0,cadF:0,gctF:0,impF:0,
       zoneTime:[0,0,0,0,0],hrHistory:[],lastKm:0,lastAI:0,
       hrSum:0,cadSum:0,count:0 };
+  currentRunId = Date.now(); // unique ID shared between run summary and coach log
   gpsDist=0;gpsPace=0;gpsLast=null;gpsTime=null;gpsPositions=[];gpsAcc=null;
   alerts=[];
   el('ai-feed').innerHTML='';
@@ -1047,8 +1053,9 @@ function finishRun(manual) {
     return `<div class="zbar-row"><div class="zbar-lbl" style="color:${ZC[i]}">Z${i+1}</div><div class="zbar-bg"><div class="zbar-fill" style="width:${pct}%;background:${ZC[i]};"></div></div><div class="zbar-pct" style="color:${ZC[i]}">${pct}%</div></div>`;
   }).join('');
   el('d-export').innerHTML=`
-    <button onclick="dlRunCSV(${rec.id})" style="flex:1;padding:12px;background:rgba(0,255,163,.12);border:1px solid rgba(0,255,163,.3);border-radius:10px;color:var(--green);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;">⬇ This Run</button>
-    <button onclick="downloadAllCSV()" style="flex:1;padding:12px;background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.25);border-radius:10px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;">⬇ All Runs</button>`;
+    <button onclick="dlRunCSV(${rec.id})" style="flex:1;padding:12px;background:rgba(0,255,163,.12);border:1px solid rgba(0,255,163,.3);border-radius:10px;color:var(--green);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ This Run</button>
+    <button onclick="downloadAllCSV()" style="flex:1;padding:12px;background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.25);border-radius:10px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ All Runs</button>
+    <button onclick="downloadCoachLog()" style="flex:1;padding:12px;background:rgba(255,183,0,.1);border:1px solid rgba(255,183,0,.25);border-radius:10px;color:var(--warn);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ Coach Log</button>`;
   el('d-feed').innerHTML=alerts.slice(0,10).map(a=>`<div class="ai-item t-${a.type}"><div class="ai-icon">${a.icon}</div><div><div class="ai-txt">${a.text}</div><div class="ai-ts">${a.ts}</div></div></div>`).join('');
   if(!manual) addAlert('good','🏁',`${dist.toFixed(2)}km done in ${sTs(S.elapsed)}. Avg ${pStr(ap)}/km. Saved!`,true);
   setTimeout(()=>go('s-done'), manual?0:1500);
@@ -1065,6 +1072,71 @@ function getRuns() {
 function deleteRun(id) {
   localStorage.setItem(HIST_KEY,JSON.stringify(getRuns().filter(r=>r.id!==id)));
   renderHistory(); toast('Run deleted');
+}
+
+// ── COACH LOG ────────────────────────────────────────────
+function adviceType(trigger) {
+  if(trigger.includes('milestone'))    return 'milestone';
+  if(trigger.includes('fatigue'))      return 'fatigue-warning';
+  if(trigger.includes('HR spike'))     return 'hr-warning';
+  if(trigger.includes('run start'))    return 'run-start';
+  if(trigger.includes('check-in'))     return 'check-in';
+  return 'check-in';
+}
+
+function logCoachEvent(trigger, aiText) {
+  try {
+    const z = zone(S.hr||0);
+    const tp = CFG.tPace||451;
+    const pDiff = S.pace - tp;
+    const entry = {
+      // Identity
+      runId:        currentRunId,
+      runDate:      new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
+      runTime:      new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+      runType:      CFG.type,
+      weather:      CFG.weather,
+      targetDist:   CFG.dist,
+      targetPace:   CFG.pace,
+      // Trigger
+      trigger:      trigger,
+      adviceType:   adviceType(trigger),
+      // State at moment of coaching
+      elapsedSecs:  S.elapsed,
+      elapsedDisplay: sTs(S.elapsed),
+      distKm:       +(S.dist||0).toFixed(3),
+      paceDisplay:  pStr(S.pace),
+      paceDiffSecs: +pDiff.toFixed(1),
+      hr:           S.hr||0,
+      hrZone:       z,
+      cadence:      S.cadence||0,
+      gct:          S.gct||0,
+      impact:       +(S.impact||0).toFixed(2),
+      // Fatigue breakdown
+      fatigueTotal: +(S.fatigue||0).toFixed(2),
+      fatigueHR:    +(S.hrF||0).toFixed(2),
+      fatigueCad:   +(S.cadF||0).toFixed(2),
+      fatigueGCT:   +(S.gctF||0).toFixed(2),
+      fatigueImp:   +(S.impF||0).toFixed(2),
+      // What the coach said
+      aiResponse:   aiText,
+    };
+    const log = getCoachLog();
+    log.push(entry);
+    localStorage.setItem(LOG_KEY, JSON.stringify(log));
+  } catch(e) { console.warn('Coach log save error', e); }
+}
+
+function getCoachLog() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY)||'[]'); } catch { return []; }
+}
+
+function clearCoachLog() {
+  if(confirm('Clear entire coaching log? This cannot be undone.')) {
+    localStorage.removeItem(LOG_KEY);
+    toast('Coaching log cleared');
+    renderHistory();
+  }
 }
 
 // ── CSV ───────────────────────────────────────────────────
@@ -1086,6 +1158,32 @@ function dlCSV(content,name){
 function dlRunCSV(id){ const r=getRuns().find(r=>r.id===id); if(r) dlCSV(buildCSV([r]),`PaceAI_${r.date.slice(0,10)}_${r.type}.csv`); }
 function downloadAllCSV(){ const r=getRuns(); if(!r.length){toast('No runs saved yet');return;} dlCSV(buildCSV(r),`PaceAI_AllRuns_${new Date().toISOString().slice(0,10)}.csv`); }
 
+// ── COACH LOG CSV EXPORT ─────────────────────────────────
+const LOG_HDR = [
+  'Run Date','Run Time','Run Type','Weather','Target km','Target Pace',
+  'Trigger','Advice Type',
+  'Elapsed','Distance km','Pace','Pace Diff (s/km)',
+  'HR','HR Zone','Cadence spm','GCT ms','Impact G',
+  'Fatigue Total','Fatigue HR','Fatigue Cad','Fatigue GCT','Fatigue Impact',
+  'AI Response'
+];
+function toLogRow(e) {
+  return [
+    e.runDate, e.runTime, e.runType, e.weather, e.targetDist, e.targetPace,
+    e.trigger, e.adviceType,
+    e.elapsedDisplay, e.distKm, e.paceDisplay, e.paceDiffSecs,
+    e.hr, e.hrZone, e.cadence, e.gct, e.impact,
+    e.fatigueTotal, e.fatigueHR, e.fatigueCad, e.fatigueGCT, e.fatigueImp,
+    e.aiResponse
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',');
+}
+function downloadCoachLog() {
+  const log = getCoachLog();
+  if(!log.length){ toast('No coaching events logged yet'); return; }
+  const csv = [LOG_HDR.join(','), ...log.map(toLogRow)].join('\n');
+  dlCSV(csv, `PaceAI_CoachLog_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
 // ── HISTORY RENDER ────────────────────────────────────────
 function renderHistory() {
   const list=el('hist-list'), expBtn=el('hist-export');
@@ -1097,11 +1195,22 @@ function renderHistory() {
   }
   if(expBtn) expBtn.style.display='block';
   const totalKm=runs.reduce((s,r)=>s+r.actualDist,0).toFixed(1);
+  const logCount=getCoachLog().length;
   list.innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;text-align:center;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;text-align:center;">
       <div class="pcstat"><div class="pcsv">${runs.length}</div><div class="pcsu">Runs</div></div>
       <div class="pcstat"><div class="pcsv">${totalKm}</div><div class="pcsu">km</div></div>
       <div class="pcstat"><div class="pcsv">${runs.filter(r=>r.completed).length}</div><div class="pcsu">Done</div></div>
+    </div>
+    <div style="background:rgba(0,200,255,.06);border:1px solid rgba(0,200,255,.2);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Coaching Log</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;color:var(--blue);">${logCount} events logged across all runs</div>
+      </div>
+      <div style="display:flex;gap:7px;">
+        <button onclick="downloadCoachLog()" style="padding:8px 12px;background:rgba(0,200,255,.12);border:1px solid rgba(0,200,255,.3);border-radius:8px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ Log CSV</button>
+        <button onclick="clearCoachLog()" style="padding:8px 10px;background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.2);border-radius:8px;color:var(--red);font-size:13px;cursor:pointer;">🗑</button>
+      </div>
     </div>
     ${runs.map(r=>`<div class="run-item">
       <div class="run-date">${r.dateDisplay}</div>
