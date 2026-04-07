@@ -576,6 +576,7 @@ let demo = false;
 let bleHR = 0, bleDevice = null;
 let fpDevice = null, fpConnected = false;
 let fpCadence = 0, fpImpact = 0, fpGCT = 0, fpSteps = 0;
+let fpStepsOffset = 0; // ESP32 step counter offset — subtracted to get per-run steps
 const FP_SERVICE  = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const FP_CHAR     = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 let gpsId = null, gpsLast = null, gpsTime = null, gpsDist = 0, gpsPace = 0;
@@ -646,7 +647,8 @@ function simGCT(cad, fat) {
 }
 function calcFat(hr, cad, gct, imp) {
   const hrF = Math.min(10, Math.max(0,(hr-(RHR+78))/20)*3.5);
-  const cF  = Math.min(10, Math.max(0,BASE_CAD-cad)*.6);
+  // Only penalise cadence after 30s — prevents stationary foot pod inflating fatigue
+  const cF  = (S.elapsed > 30) ? Math.min(10, Math.max(0,BASE_CAD-cad)*.6) : 0;
   const gF  = Math.min(10, Math.max(0,gct-BASE_GCT)*.05);
   const iF  = Math.min(10, Math.max(0,imp-BASE_IMP)*4);
   return { total:+(hrF*.35+cF*.25+gF*.20+iF*.20).toFixed(1), hr:+hrF.toFixed(1), cad:+cF.toFixed(1), gct:+gF.toFixed(1), imp:+iF.toFixed(1) };
@@ -793,6 +795,7 @@ async function connectFootPod() {
     btn.textContent='✓ Connected'; toast('Foot pod connected!');
     fpDevice.addEventListener('gattserverdisconnected', () => {
       fpConnected=false; fpCadence=0; fpImpact=0; fpGCT=0;
+      // Keep fpStepsOffset so reconnect continues from same run baseline
       btn.disabled=false; btn.textContent='Reconnect';
       txt.textContent='Disconnected — values simulated';
       txt.className='status-val s-err';
@@ -918,7 +921,7 @@ function tick() {
     S.cadence = fpCadence;
     S.impact  = fpImpact;
     S.gct     = fpGCT;
-    S.steps   = fpSteps; // use hardware step count directly
+    S.steps   = Math.max(0, fpSteps - fpStepsOffset); // offset-corrected per-run steps
   } else {
     S.cadence=simCad(S.elapsed,S.fatigue,S.hr);
     S.impact=simImpact(S.cadence,S.fatigue);
@@ -1065,7 +1068,10 @@ function startRun(demoMode) {
       zoneTime:[0,0,0,0,0],hrHistory:[],lastKm:0,lastAI:0,
       hrSum:0,cadSum:0,count:0 };
   currentRunId = Date.now(); // unique ID shared between run summary and coach log
-  fpCadence=0; fpImpact=0; fpGCT=0; fpSteps=0; // reset foot pod state
+  // Record ESP32 cumulative step count as offset — so run steps start from 0
+  fpStepsOffset = fpSteps;
+  fpCadence=0; fpImpact=0; fpGCT=0; // reset displayed fp values
+  // Note: fpSteps NOT reset — it holds the ESP32 value; offset subtracts it
   gpsDist=0;gpsPace=0;gpsLast=null;gpsTime=null;gpsPositions=[];gpsAcc=null;
   alerts=[];
   el('ai-feed').innerHTML='';
