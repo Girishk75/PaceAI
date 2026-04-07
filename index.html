@@ -401,8 +401,8 @@ html,body{
     </div>
 
     <div class="mrow">
-      <div class="ms"><div class="msv" id="l-dist" style="color:var(--green);">0.00</div><div class="msu">km</div></div>
-      <div class="ms"><div class="msv" id="l-pace" style="color:var(--blue);">--:--</div><div class="msu">min/km</div></div>
+      <div class="ms"><div class="msv" id="l-dist" style="color:var(--green);">0.00</div><div class="msu" id="l-dist-unit">km</div></div>
+      <div class="ms"><div class="msv" id="l-pace" style="color:var(--blue);">--:--</div><div class="msu" id="l-pace-unit">min/km</div></div>
       <div class="ms"><div class="msv" id="l-hr" style="color:var(--muted);">--</div><div class="msu" id="l-zone">bpm</div></div>
     </div>
 
@@ -416,7 +416,7 @@ html,body{
 
       <div class="mgrid">
         <div class="mc mc-g"><div class="mcl">Cadence</div><div class="mcv" id="l-cad" style="color:var(--green);">--</div><div class="mcs" id="l-cad-s">steps/min</div></div>
-        <div class="mc mc-b"><div class="mcl">Steps</div><div class="mcv" id="l-steps" style="color:var(--blue);">--</div><div class="mcs">total</div></div>
+        <div class="mc mc-b"><div class="mcl">Steps</div><div class="mcv" id="l-steps" style="color:var(--blue);">--</div><div class="mcs" id="l-steps-unit">total</div></div>
         <div class="mc mc-w"><div class="mcl">Impact</div><div class="mcv" id="l-impact" style="color:var(--warn);">--</div><div class="mcs" id="l-impact-s">G per step</div></div>
         <div class="mc mc-b"><div class="mcl">GCT</div><div class="mcv" id="l-gct" style="color:var(--blue);">--</div><div class="mcs" id="l-gct-s">contact ms</div></div>
       </div>
@@ -684,7 +684,6 @@ function startGPS() {
 
 function handleGPSPosition(pos) {
   const now = Date.now();
-const now = Date.now();
     gpsAcc = Math.round(pos.coords.accuracy);
     if(gpsLast && gpsTime && S.phase==='running') {
       const d = haversine(gpsLast.coords, pos.coords);
@@ -1033,18 +1032,17 @@ function updateUI() {
     }
   }
 
-  // Main row
+  // Main row — declare sim flags first, then use them
+  const paceSim = !demo && gpsPace===0;
+  const hrSim = bleHR===0;
   el('l-dist').textContent=(S.dist||0).toFixed(2);
-  const distUnitEl = document.querySelector('#s-live .mrow .ms:first-child .msu');
+  const distUnitEl=el('l-dist-unit');
   if(distUnitEl) distUnitEl.textContent = paceSim ? '⚡ sim km' : 'km';
   el('l-pace').textContent=pStr(S.pace);
-  const paceSim = !demo && gpsPace===0;
   const paceEl=el('l-pace');
   paceEl.style.opacity = paceSim?'0.6':'1';
-  // Update the min/km label to show sim status
-  const paceUnitEl = document.querySelector('#s-live .mrow .ms:nth-child(2) .msu');
+  const paceUnitEl=el('l-pace-unit');
   if(paceUnitEl) paceUnitEl.textContent = paceSim ? '⚡ SIM PACE' : 'min/km';
-  const hrSim = bleHR===0;
   const hr=el('l-hr'); hr.textContent=S.hr||'--'; hr.style.color=zc;
   el('l-zone').textContent = hrSim ? '⚡ Sim HR' : (S.hr>0?ZN[z-1]:'bpm');
 
@@ -1054,10 +1052,7 @@ function updateUI() {
   el('l-cad-s').textContent = cadSim ? '⚡ Simulated' :
     S.cadence>=175?'✓ Optimal':S.cadence<168?'↑ Low':'steps/min';
   el('l-steps').textContent=S.steps>0?S.steps.toLocaleString():'--';
-  const stepUnitEl=document.querySelector('#l-steps + .mcs');
-  // steps card mcs label
-  const stepsCard=el('l-steps');
-  const stepsSubEl=stepsCard?stepsCard.parentElement.querySelector('.mcs'):null;
+  const stepsSubEl=el('l-steps-unit');
   if(stepsSubEl) stepsSubEl.textContent = cadSim?'⚡ Simulated':'total';
   const ii=el('l-impact'); ii.textContent=S.impact>0?S.impact.toFixed(2):'--'; ii.style.color=S.impact>2.8?'var(--red)':'var(--warn)';
   el('l-impact-s').textContent = cadSim ? '⚡ Simulated' : S.impact>2.8?'⚠ High impact':'G per step';
