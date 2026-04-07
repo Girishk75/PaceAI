@@ -318,6 +318,12 @@ html,body{
         <button class="btn-sm" id="ble-btn" onclick="connectBLE()">Connect</button>
       </div>
 
+      <div class="sec-lbl">ESP32 Foot Pod — Cadence, Impact &amp; GCT</div>
+      <div class="status-row">
+        <div><div class="status-lbl">Foot Pod BLE</div><div class="status-val s-sim" id="fp-txt">Tap to connect foot pod</div></div>
+        <button class="btn-sm" id="fp-btn" onclick="connectFootPod()">Connect</button>
+      </div>
+
       <div class="sec-lbl">GPS — Pace &amp; Distance</div>
       <div class="status-row">
         <div><div class="status-lbl">Location</div><div class="status-val s-sim" id="gps-txt">Will activate on run start</div></div>
@@ -568,6 +574,10 @@ let CFG = {}; // run config
 let timer = null;
 let demo = false;
 let bleHR = 0, bleDevice = null;
+let fpDevice = null, fpConnected = false;
+let fpCadence = 0, fpImpact = 0, fpGCT = 0, fpSteps = 0;
+const FP_SERVICE  = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const FP_CHAR     = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 let gpsId = null, gpsLast = null, gpsTime = null, gpsDist = 0, gpsPace = 0;
 let gpsPositions = [], gpsAcc = null;
 let aiBusy = false;
@@ -657,15 +667,26 @@ function startGPS() {
     if(gpsLast && gpsTime && S.phase==='running') {
       const d = haversine(gpsLast.coords, pos.coords);
       const dt = (now-gpsTime)/1000;
-      if(d>.002 && dt>0 && gpsAcc<50) {
-        gpsDist += d; S.dist = gpsDist;
+      // Relaxed to 100m accuracy for Mumbai urban GPS; min 5m movement
+      if(d>.005 && dt>0 && gpsAcc<100) {
+        gpsDist += d;
         gpsPositions.push({d,dt});
         if(gpsPositions.length>5) gpsPositions.shift();
-        const td=gpsPositions.reduce((s,p)=>s+p.d,0);
-        const tt=gpsPositions.reduce((s,p)=>s+p.dt,0);
-        if(td>0) gpsPace = tt/td;
+        let rawPace = 0;
+        // Prefer coords.speed (m/s) from Android if available
+        if(pos.coords.speed && pos.coords.speed > 0.5) {
+          rawPace = 1000 / pos.coords.speed; // convert m/s → secs/km
+        } else {
+          const td=gpsPositions.reduce((s,p)=>s+p.d,0);
+          const tt=gpsPositions.reduce((s,p)=>s+p.dt,0);
+          if(td>0) rawPace = tt/td;
+        }
+        // Bounds filter: only accept 3:30/km–15:00/km, reject noise
+        if(rawPace>=210 && rawPace<=900) gpsPace = rawPace;
       }
     }
+    // First GPS fix: anchor gpsDist to wherever S.dist is now
+    if(gpsDist===0 && S.dist>0) gpsDist = S.dist;
     gpsLast=pos; gpsTime=now;
     setGPS(`GPS ✓ ±${gpsAcc}m`,'ok','🛰');
   }, err => {
@@ -735,6 +756,52 @@ async function releaseWakeLock() {
   if(wakeLock) {
     try { await wakeLock.release(); } catch(e) {}
     wakeLock = null;
+  }
+}
+
+async function connectFootPod() {
+  const btn=el('fp-btn'), txt=el('fp-txt');
+  if(!navigator.bluetooth){ toast('Web Bluetooth needs Chrome on Android'); return; }
+  try {
+    btn.disabled=true; btn.textContent='Scanning...';
+    txt.textContent='Scanning for PaceAI-FootPod...'; txt.className='status-val s-sim';
+    fpDevice = await navigator.bluetooth.requestDevice({
+      filters:[{name:'PaceAI-FootPod'}],
+      optionalServices:[FP_SERVICE]
+    });
+    const srv = await fpDevice.gatt.connect();
+    const svc = await srv.getPrimaryService(FP_SERVICE);
+    const chr = await svc.getCharacteristic(FP_CHAR);
+    await chr.startNotifications();
+    chr.addEventListener('characteristicvaluechanged', e => {
+      const raw = new TextDecoder().decode(e.target.value);
+      const parts = raw.split(',');
+      if(parts.length === 4) {
+        const cad = parseFloat(parts[0]);
+        const imp = parseFloat(parts[1]);
+        const gct = parseFloat(parts[2]);
+        const stp = parseInt(parts[3]);
+        // Only accept realistic values — discard noise
+        if(cad > 0 && cad < 300)  fpCadence = cad;
+        if(imp > 0 && imp < 10)   fpImpact  = imp;
+        if(gct > 50 && gct < 600) fpGCT     = gct;
+        if(stp >= fpSteps)        fpSteps   = stp; // never go backwards
+      }
+    });
+    fpConnected = true;
+    txt.textContent='Connected: PaceAI-FootPod'; txt.className='status-val s-ok';
+    btn.textContent='✓ Connected'; toast('Foot pod connected!');
+    fpDevice.addEventListener('gattserverdisconnected', () => {
+      fpConnected=false; fpCadence=0; fpImpact=0; fpGCT=0;
+      btn.disabled=false; btn.textContent='Reconnect';
+      txt.textContent='Disconnected — values simulated';
+      txt.className='status-val s-err';
+      toast('Foot pod disconnected — using simulation');
+    });
+  } catch(e) {
+    btn.disabled=false; btn.textContent='Retry';
+    txt.textContent=e.name==='NotFoundError'?'No device chosen':'Connection failed';
+    txt.className='status-val s-sim';
   }
 }
 
@@ -835,14 +902,29 @@ function tick() {
   S.hrSum+=S.hr;
 
   // Pace / dist
-  if(!demo&&gpsPace>0){ S.pace=gpsPace; S.dist=gpsDist; }
-  else { S.pace=simPace(S.elapsed,S.fatigue,S.hr,tp); S.dist+=1/S.pace; }
+  if(!demo&&gpsPace>0){
+    S.pace = gpsPace;
+    // Always accumulate 1 second of distance using GPS pace
+    S.dist += 1/S.pace;
+    // If GPS callback arrived and gpsDist jumped ahead, sync up (never go back)
+    if(gpsDist > S.dist) S.dist = gpsDist;
+  } else {
+    S.pace = simPace(S.elapsed,S.fatigue,S.hr,tp);
+    S.dist += 1/S.pace;
+  }
 
-  // Foot pod (sim until hardware ready)
-  S.cadence=simCad(S.elapsed,S.fatigue,S.hr);
-  S.impact=simImpact(S.cadence,S.fatigue);
-  S.gct=simGCT(S.cadence,S.fatigue);
-  S.steps+=Math.round(S.cadence/60);
+  // Foot pod — real hardware when connected, sim otherwise
+  if(fpConnected && fpCadence>0) {
+    S.cadence = fpCadence;
+    S.impact  = fpImpact;
+    S.gct     = fpGCT;
+    S.steps   = fpSteps; // use hardware step count directly
+  } else {
+    S.cadence=simCad(S.elapsed,S.fatigue,S.hr);
+    S.impact=simImpact(S.cadence,S.fatigue);
+    S.gct=simGCT(S.cadence,S.fatigue);
+    S.steps+=Math.round(S.cadence/60);
+  }
   S.cadSum+=S.cadence; S.count++;
 
   // Zone time
@@ -901,8 +983,11 @@ function updateUI() {
     else{gi.textContent='📍 No GPS — pace simulated';gi.style.color='var(--red)';}
   }
   if(bi){
-    if(bleHR>0){bi.textContent=`♥ ${bleHR} Garmin`;bi.style.color='var(--green)';}
-    else{bi.textContent='♥ HR sim';bi.style.color='var(--warn)';}
+    const hrPart = bleHR>0 ? `♥${bleHR} Garmin` : '♥ sim';
+    const fpPart = fpConnected ? `👟${fpCadence.toFixed(0)}spm` : '👟 sim';
+    bi.textContent=`${hrPart} · ${fpPart}`;
+    bi.style.color = (bleHR>0 && fpConnected) ? 'var(--green)' :
+                     (bleHR>0 || fpConnected) ? 'var(--warn)' : 'var(--muted)';
   }
   // Update source label accurately
   const srcEl=el('pred-src');
@@ -980,6 +1065,7 @@ function startRun(demoMode) {
       zoneTime:[0,0,0,0,0],hrHistory:[],lastKm:0,lastAI:0,
       hrSum:0,cadSum:0,count:0 };
   currentRunId = Date.now(); // unique ID shared between run summary and coach log
+  fpCadence=0; fpImpact=0; fpGCT=0; fpSteps=0; // reset foot pod state
   gpsDist=0;gpsPace=0;gpsLast=null;gpsTime=null;gpsPositions=[];gpsAcc=null;
   alerts=[];
   el('ai-feed').innerHTML='';
