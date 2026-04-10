@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="PaceAI"/>
-<title>PaceAI v8.1 — Live Running Coach</title>
+<title>PaceAI v8.2 — Live Running Coach</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
 /* ── RESET ───────────────────────────────────────────────── */
@@ -291,7 +291,7 @@ html,body{
       <div>
         <div class="logo">PACE<span>AI</span></div>
         <div style="font-size:9px;color:var(--muted);font-family:'Rajdhani',sans-serif;letter-spacing:2px;text-transform:uppercase">Girish · Mumbai</div>
-        <div style="font-size:8px;color:#ffffff;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">v8.1</div>
+        <div style="font-size:8px;color:#ffffff;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">v8.2</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="pill pill-idle">READY</div>
@@ -373,7 +373,7 @@ html,body{
       <div>
         <div style="display:flex;align-items:baseline;gap:6px;">
           <div class="logo" style="font-size:17px;">PACE<span>AI</span></div>
-          <div style="font-size:8px;color:#ffffff;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">v8.1</div>
+          <div style="font-size:8px;color:#ffffff;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">v8.2</div>
         </div>
         <div style="font-size:9px;color:var(--muted);font-family:'Rajdhani',sans-serif;letter-spacing:2px;text-transform:uppercase;" id="live-type">Long Run · 10km</div>
       </div>
@@ -585,6 +585,7 @@ const FP_SERVICE  = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const FP_CHAR     = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 let gpsId = null, gpsLast = null, gpsTime = null, gpsDist = 0, gpsPace = 0;
 let gpsPositions = [], gpsAcc = null;
+let gpsPaceTime = 0; // timestamp of last valid pace update — for staleness detection
 let aiBusy = false;
 let wakeLock = null;
 let currentRunId = null; // set at run start, used by coach log
@@ -688,22 +689,26 @@ function handleGPSPosition(pos) {
     if(gpsLast && gpsTime && S.phase==='running') {
       const d = haversine(gpsLast.coords, pos.coords);
       const dt = (now-gpsTime)/1000;
-      // Relaxed to 100m accuracy for Mumbai urban GPS; min 5m movement
-      if(d>.005 && dt>0 && gpsAcc<100) {
+      // Mumbai urban GPS: relaxed to 150m accuracy, 3m min movement
+      if(d>.003 && dt>0 && gpsAcc<150) {
         gpsDist += d;
         gpsPositions.push({d,dt});
         if(gpsPositions.length>5) gpsPositions.shift();
-        let rawPace = 0;
-        // Prefer coords.speed (m/s) from Android if available
-        if(pos.coords.speed && pos.coords.speed > 0.5) {
-          rawPace = 1000 / pos.coords.speed; // convert m/s → secs/km
-        } else {
-          const td=gpsPositions.reduce((s,p)=>s+p.d,0);
-          const tt=gpsPositions.reduce((s,p)=>s+p.dt,0);
-          if(td>0) rawPace = tt/td;
-        }
+        // Always calculate haversine pace from sliding window
+        const td=gpsPositions.reduce((s,p)=>s+p.d,0);
+        const tt=gpsPositions.reduce((s,p)=>s+p.dt,0);
+        let harvPace = (td>0) ? tt/td : 0;
+        // Also read coords.speed if available (m/s → secs/km)
+        let speedPace = (pos.coords.speed && pos.coords.speed>0.5)
+                        ? 1000/pos.coords.speed : 0;
+        // Prefer haversine (more stable) — use coords.speed only if
+        // haversine window has fewer than 3 points (not enough data yet)
+        let rawPace = (gpsPositions.length>=3) ? harvPace : (speedPace||harvPace);
         // Bounds filter: only accept 3:30/km–15:00/km, reject noise
-        if(rawPace>=210 && rawPace<=900) gpsPace = rawPace;
+        if(rawPace>=210 && rawPace<=900) {
+          gpsPace = rawPace;
+          gpsPaceTime = Date.now(); // record when pace last updated
+        }
       }
     }
     // First GPS fix: anchor gpsDist to wherever S.dist is now
@@ -926,15 +931,19 @@ function tick() {
   S.hrSum+=S.hr;
 
   // Pace / dist
-  if(!demo&&gpsPace>0){
+  const gpsPaceStale = gpsPace>0 && (Date.now()-gpsPaceTime)>15000;
+  if(!demo && gpsPace>0 && !gpsPaceStale){
     S.pace = gpsPace;
-    // Always accumulate 1 second of distance using GPS pace
+    // Accumulate distance every tick using GPS pace
     S.dist += 1/S.pace;
-    // If GPS callback arrived and gpsDist jumped ahead, sync up (never go back)
+    // If GPS callback jumped ahead, sync up (never go back)
     if(gpsDist > S.dist) S.dist = gpsDist;
   } else {
+    // GPS stale or unavailable — use sim pace for display only
+    // but keep accumulating from last known gpsDist
     S.pace = simPace(S.elapsed,S.fatigue,S.hr,tp);
     S.dist += 1/S.pace;
+    if(gpsPaceStale) setGPS(`GPS stale — last fix >${Math.round((Date.now()-gpsPaceTime)/1000)}s ago`,'sim','⚠️');
   }
 
   // Foot pod — real hardware when connected, sim otherwise
@@ -1105,7 +1114,7 @@ function startRun(demoMode) {
   fpStepsOffset = fpSteps;
   fpCadence=0; fpImpact=0; fpGCT=0; // reset displayed fp values
   // Note: fpSteps NOT reset — it holds the ESP32 value; offset subtracts it
-  gpsDist=0;gpsPace=0;gpsLast=null;gpsTime=null;gpsPositions=[];gpsAcc=null;
+  gpsDist=0;gpsPace=0;gpsPaceTime=0;gpsLast=null;gpsTime=null;gpsPositions=[];gpsAcc=null;
   alerts=[];
   el('ai-feed').innerHTML='';
   el('live-type').textContent=`${CFG.type.charAt(0).toUpperCase()+CFG.type.slice(1)} Run · ${CFG.dist}km`;
