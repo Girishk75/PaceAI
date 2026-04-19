@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="theme-color" content="#03070a"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="PaceAI"/>
+<title>PaceAI v9.3 — Live Running Coach</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ── RESET ───────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#03070a;--surf:#080f13;--card:#0c1619;--border:#162025;
+  --green:#00ffa3;--blue:#00c8ff;--warn:#ffb700;--red:#ff4560;
+  --text:#dff0ec;--muted:#3a5a62;--dim:#0e1d21;
+}
+
+/* ── ROOT LAYOUT ─────────────────────────────────────────── */
+/* NO overflow:hidden on body — kills touch on Android */
+html,body{
+  height:100%;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Barlow',sans-serif;
+  touch-action:manipulation;
+}
+#app{
+  position:fixed; /* lock app to viewport cleanly */
+  inset:0;
+  max-width:430px;
+  margin:0 auto;
+  background:var(--bg);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+/* ── SCREENS ─────────────────────────────────────────────── */
+/* Absolute stack — only active screen visible, no z-index bleed */
+.screen{
+  display:none;
+  position:absolute;
+  inset:0;
+  flex-direction:column;
+  background:var(--bg);
+}
+.screen.active{display:flex;}
+
+/* ── SCROLLABLE CONTENT AREA ─────────────────────────────── */
+.scroller{
+  flex:1;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:16px 18px 32px; /* no huge bottom pad — no fixed bar */
+}
+.scroller::-webkit-scrollbar{display:none;}
+
+/* ── HEADER ──────────────────────────────────────────────── */
+.hdr{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 18px 10px;
+  border-bottom:1px solid var(--border);
+  background:var(--bg);
+}
+.logo{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;letter-spacing:3px;color:var(--green);}
+.logo span{color:var(--text);}
+.pill{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;
+  font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;}
+.pill-idle{background:rgba(58,90,98,.25);border:1px solid var(--muted);color:var(--muted);}
+.pill-live{background:rgba(0,255,163,.1);border:1px solid rgba(0,255,163,.4);color:var(--green);}
+.pill-pause{background:rgba(255,183,0,.1);border:1px solid rgba(255,183,0,.4);color:var(--warn);}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:lp 1.2s infinite;}
+@keyframes lp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.6)}}
+
+/* ── INLINE BOTTOM CONTROLS (no position:fixed) ──────────── */
+.ctrl{
+  flex-shrink:0;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  padding:12px 18px 20px;
+  background:var(--bg);
+  border-top:1px solid var(--border);
+}
+.ctrl.single{grid-template-columns:1fr;}
+.btn-c{padding:15px;border:none;border-radius:10px;font-family:'Rajdhani',sans-serif;
+  font-weight:700;font-size:14px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:.15s;}
+.btn-p{background:rgba(255,183,0,.15);color:var(--warn);border:1px solid rgba(255,183,0,.3);}
+.btn-s{background:rgba(255,69,96,.12);color:var(--red);border:1px solid rgba(255,69,96,.25);}
+.btn-r{background:rgba(0,255,163,.12);color:var(--green);border:1px solid rgba(0,255,163,.3);}
+
+/* ── FORM ELEMENTS ───────────────────────────────────────── */
+.sec-lbl{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--muted);margin:14px 0 8px;}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.fl label{display:block;font-family:'Rajdhani',sans-serif;font-size:10px;
+  letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+.fi{width:100%;background:var(--surf);border:1px solid var(--border);border-radius:8px;
+  padding:11px 12px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:18px;
+  font-weight:600;outline:none;transition:border-color .2s;}
+.fi:focus{border-color:var(--green);}
+.fs{width:100%;background:var(--surf);border:1px solid var(--border);border-radius:8px;
+  padding:11px 12px;color:var(--text);font-family:'Rajdhani',sans-serif;
+  font-size:14px;outline:none;-webkit-appearance:none;}
+
+/* ── BUTTONS ─────────────────────────────────────────────── */
+.btn-start{width:100%;padding:17px;background:var(--green);color:#020a0d;border:none;
+  border-radius:10px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;
+  letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:.15s;margin-top:4px;}
+.btn-start:active{background:#00ffc4;}
+.btn-sec{width:100%;padding:13px;background:transparent;border:1px solid var(--border);
+  border-radius:10px;color:var(--muted);font-family:'Rajdhani',sans-serif;font-size:14px;
+  font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;margin-top:8px;}
+.btn-sm{padding:8px 14px;background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.3);
+  border-radius:8px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-size:12px;
+  font-weight:600;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;}
+.btn-icon{background:none;border:1px solid var(--border);border-radius:8px;
+  padding:5px 10px;font-size:18px;cursor:pointer;color:var(--muted);line-height:1;}
+
+/* ── PROFILE CARD ────────────────────────────────────────── */
+.profile-card{background:linear-gradient(135deg,var(--dim),rgba(0,255,163,.04));
+  border:1px solid rgba(0,255,163,.2);border-radius:14px;padding:16px;margin-bottom:16px;}
+.pc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.pcstat{text-align:center;background:rgba(0,0,0,.3);border-radius:8px;padding:8px 4px;}
+.pcsv{font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:var(--green);}
+.pcsu{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:1px;}
+
+/* ── STATUS ROWS ─────────────────────────────────────────── */
+.status-row{display:flex;align-items:center;justify-content:space-between;
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;margin-bottom:10px;}
+.status-lbl{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);margin-bottom:2px;}
+.status-val{font-size:14px;font-weight:600;font-family:'Rajdhani',sans-serif;}
+.s-ok{color:var(--green);} .s-sim{color:var(--warn);} .s-err{color:var(--red);}
+
+/* ── LIVE CLOCK ──────────────────────────────────────────── */
+.clock-wrap{flex-shrink:0;padding:14px 18px 6px;text-align:center;}
+.clock{font-family:'Share Tech Mono',monospace;font-size:62px;line-height:1;
+  color:var(--text);letter-spacing:2px;}
+.clock-sub{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--muted);margin-top:2px;}
+.src-row{display:flex;justify-content:center;gap:16px;margin-top:5px;}
+.src-tag{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);}
+
+/* ── ZONE STRIP ──────────────────────────────────────────── */
+.zstrip{flex-shrink:0;display:flex;height:5px;}
+.zseg{flex:1;transition:opacity .3s;}
+.zseg.on{animation:zg 1s infinite alternate;}
+@keyframes zg{from{filter:brightness(1)}to{filter:brightness(2)}}
+
+/* ── MAIN STATS ROW ──────────────────────────────────────── */
+.mrow{flex-shrink:0;display:grid;grid-template-columns:1fr 1fr 1fr;
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.ms{padding:12px 4px;text-align:center;border-right:1px solid var(--border);}
+.ms:last-child{border-right:none;}
+.msv{font-family:'Rajdhani',sans-serif;font-size:32px;font-weight:700;line-height:1;}
+.msu{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+  margin-top:3px;font-family:'Rajdhani',sans-serif;}
+
+/* ── METRIC CARDS ────────────────────────────────────────── */
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px;}
+.mc{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;position:relative;overflow:hidden;}
+.mc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.mc-g::before{background:var(--green)}.mc-b::before{background:var(--blue)}
+.mc-w::before{background:var(--warn)}.mc-r::before{background:var(--red)}
+.mcl{font-family:'Rajdhani',sans-serif;font-size:9px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.mcv{font-family:'Rajdhani',sans-serif;font-size:24px;font-weight:700;line-height:1;}
+.mcs{font-size:10px;color:var(--muted);margin-top:2px;}
+
+/* ── FATIGUE ─────────────────────────────────────────────── */
+.fat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;margin-bottom:10px;}
+.fat-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.fat-lbl{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);}
+.fat-val{font-family:'Rajdhani',sans-serif;font-size:18px;font-weight:700;}
+.fat-bg{height:8px;background:var(--dim);border-radius:4px;overflow:hidden;}
+.fat-fill{height:100%;border-radius:4px;transition:width .5s,background .5s;}
+.fat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px;}
+.fat-comp{text-align:center;}
+.fat-cv{font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:600;}
+.fat-cl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:1px;}
+
+/* ── PREDICTION PANEL ────────────────────────────────────── */
+.pred{background:var(--card);border:1px solid var(--border);border-radius:12px;
+  margin-bottom:10px;overflow:hidden;}
+.pred-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 14px;background:var(--dim);border-bottom:1px solid var(--border);}
+.pred-title{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--blue);font-weight:600;}
+.pred-body{padding:9px 14px;display:flex;flex-direction:column;gap:6px;}
+.pr{display:flex;justify-content:space-between;align-items:center;}
+.pk{font-size:12px;color:var(--muted);}
+.pv{font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:600;}
+
+/* ── AI FEED ─────────────────────────────────────────────── */
+.feed-lbl{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--muted);margin-bottom:7px;}
+.feed{display:flex;flex-direction:column;gap:7px;}
+.ai-item{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;
+  border-radius:9px;animation:si .3s ease;}
+@keyframes si{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+.ai-item.t-ai{background:rgba(0,200,255,.07);border:1px solid rgba(0,200,255,.2);}
+.ai-item.t-warn{background:rgba(255,183,0,.07);border:1px solid rgba(255,183,0,.2);}
+.ai-item.t-good{background:rgba(0,255,163,.06);border:1px solid rgba(0,255,163,.2);}
+.ai-item.t-danger{background:rgba(255,69,96,.07);border:1px solid rgba(255,69,96,.2);}
+.ai-icon{font-size:14px;flex-shrink:0;margin-top:1px;}
+.ai-txt{font-size:13px;line-height:1.5;flex:1;color:var(--text);}
+.ai-ts{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;}
+.thinking{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:9px;
+  background:rgba(0,200,255,.05);border:1px solid rgba(0,200,255,.15);}
+.dots span{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue);
+  margin:0 2px;animation:db 1.2s infinite;}
+.dots span:nth-child(2){animation-delay:.2s;}
+.dots span:nth-child(3){animation-delay:.4s;}
+@keyframes db{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+
+/* ── AUDIO INDICATOR ─────────────────────────────────────── */
+.audio-ind{display:flex;align-items:center;gap:6px;background:rgba(0,200,255,.08);
+  border:1px solid rgba(0,200,255,.2);border-radius:8px;padding:8px 12px;margin-bottom:10px;}
+.waves{display:flex;align-items:center;gap:2px;}
+.wv{width:3px;border-radius:2px;background:var(--blue);animation:wv 1s infinite;}
+.wv:nth-child(1){height:6px}.wv:nth-child(2){height:12px;animation-delay:.1s}
+.wv:nth-child(3){height:8px;animation-delay:.2s}.wv:nth-child(4){height:14px;animation-delay:.3s}
+.wv:nth-child(5){height:6px;animation-delay:.4s}
+@keyframes wv{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.4)}}
+.audio-txt{font-family:'Rajdhani',sans-serif;font-size:12px;color:var(--blue);letter-spacing:1px;}
+
+/* ── MUTE BUTTON ─────────────────────────────────────────── */
+.mute-btn{background:none;border:1px solid var(--border);border-radius:8px;
+  padding:5px 9px;font-size:15px;cursor:pointer;line-height:1;color:var(--muted);}
+.mute-btn.muted{border-color:rgba(255,69,96,.4);background:rgba(255,69,96,.1);}
+
+/* ── DONE SCREEN ─────────────────────────────────────────── */
+.done-hero{text-align:center;padding:16px 0 12px;}
+.sum-card{background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:14px;margin-bottom:12px;}
+.sum-lbl{font-family:'Rajdhani',sans-serif;font-size:11px;letter-spacing:2px;
+  text-transform:uppercase;color:#6aa8b4;margin-bottom:12px;}
+.sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.sbox{text-align:center;background:var(--dim);border-radius:8px;padding:12px 6px;}
+.sv{font-family:'Rajdhani',sans-serif;font-size:28px;font-weight:700;line-height:1;color:var(--text);}
+.su{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6aa8b4;margin-top:4px;}
+.zbar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.zbar-lbl{font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;width:28px;}
+.zbar-bg{flex:1;height:10px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;}
+.zbar-fill{height:100%;border-radius:5px;}
+.zbar-pct{font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;width:34px;text-align:right;}
+
+/* ── HISTORY ─────────────────────────────────────────────── */
+.run-item{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;margin-bottom:9px;}
+.run-date{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);}
+.run-title{font-family:'Rajdhani',sans-serif;font-size:18px;font-weight:700;margin:2px 0 8px;}
+.run-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px;}
+.rs-box{text-align:center;background:var(--dim);border-radius:6px;padding:5px 2px;}
+.rs-val{font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;}
+.rs-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);}
+.run-btns{display:flex;gap:7px;}
+
+/* ── RUN SHIELD ─────────────────────────────────────────────── */
+.shield{
+  position:fixed;inset:0;
+  max-width:430px;margin:0 auto;
+  background:#03070a;
+  z-index:999;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:0;
+  cursor:pointer;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.shield.active{display:flex;}
+.shield-clock{
+  font-family:'Share Tech Mono',monospace;
+  font-size:72px;
+  line-height:1;
+  color:var(--text);
+  letter-spacing:2px;
+}
+.shield-sub{
+  font-family:'Rajdhani',sans-serif;
+  font-size:10px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--muted);
+  margin-top:4px;margin-bottom:28px;
+}
+.shield-stats{
+  display:flex;gap:32px;margin-bottom:36px;
+}
+.shield-stat{text-align:center;}
+.shield-sv{
+  font-family:'Rajdhani',sans-serif;
+  font-size:32px;font-weight:700;line-height:1;
+}
+.shield-sl{
+  font-size:9px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);
+  margin-top:3px;font-family:'Rajdhani',sans-serif;
+}
+.shield-hint{
+  font-family:'Rajdhani',sans-serif;
+  font-size:12px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);
+  margin-top:8px;
+  padding:10px 22px;
+  border:1px solid var(--border);
+  border-radius:20px;
+}
+.shield-progress{
+  width:180px;height:4px;
+  background:var(--border);
+  border-radius:2px;overflow:hidden;
+  margin-bottom:10px;
+}
+.shield-progress-fill{
+  height:100%;width:0%;
+  background:var(--green);
+  border-radius:2px;
+  transition:width 0.1s linear;
+}
+
+/* ── TOAST ───────────────────────────────────────────────── */
+/* Only position:fixed element in the whole app */
+.toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);
+  background:rgba(0,255,163,.15);border:1px solid rgba(0,255,163,.4);
+  color:var(--green);padding:10px 20px;border-radius:8px;
+  font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;
+  letter-spacing:1px;z-index:9999;display:none;text-align:center;max-width:90%;}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="toast" id="toast"></div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN: SETUP
+  ══════════════════════════════════════════════ -->
+  <div class="screen active" id="s-setup">
+    <div class="hdr">
+      <div>
+        <div class="logo">PACE<span>AI</span></div>
+        <div style="font-size:9px;color:var(--muted);font-family:'Rajdhani',sans-serif;letter-spacing:2px;text-transform:uppercase">Girish · Mumbai</div>
+        <div style="font-size:8px;color:#ffffff;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">v9.3</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="pill pill-idle">READY</div>
+        <button class="btn-icon" onclick="go('s-settings')">⚙</button>
+      </div>
+    </div>
+    <div class="scroller">
+
+      <div class="profile-card">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:2px;">Running Profile</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;margin-bottom:12px;">Girish 🏃 Mumbai Runner</div>
+        <div class="pc-grid">
+          <div class="pcstat"><div class="pcsv">323</div><div class="pcsu">Runs</div></div>
+          <div class="pcstat"><div class="pcsv">3043</div><div class="pcsu">km</div></div>
+          <div class="pcstat"><div class="pcsv">185</div><div class="pcsu">Max HR</div></div>
+          <div class="pcstat"><div class="pcsv">7:51</div><div class="pcsu">Avg Pace</div></div>
+          <div class="pcstat"><div class="pcsv">172</div><div class="pcsu">Cadence</div></div>
+          <div class="pcstat"><div class="pcsv">42K</div><div class="pcsu">Longest</div></div>
+        </div>
+      </div>
+
+      <div class="sec-lbl">Garmin FR245 — Heart Rate</div>
+      <div class="status-row">
+        <div><div class="status-lbl">BLE Connection</div><div class="status-val s-sim" id="ble-txt">Tap to connect Garmin</div></div>
+        <button class="btn-sm" id="ble-btn" onclick="connectBLE()">Connect</button>
+      </div>
+
+      <div class="sec-lbl">ESP32 Foot Pod — Cadence, Impact &amp; GCT</div>
+      <div class="status-row">
+        <div><div class="status-lbl">Foot Pod BLE</div><div class="status-val s-sim" id="fp-txt">Tap to connect foot pod</div></div>
+        <button class="btn-sm" id="fp-btn" onclick="connectFootPod()">Connect</button>
+      </div>
+
+      <div class="sec-lbl">GPS — Pace &amp; Distance</div>
+      <div class="status-row">
+        <div><div class="status-lbl">Location</div><div class="status-val s-sim" id="gps-txt">Will activate on run start</div></div>
+        <span style="font-size:20px" id="gps-icon">📍</span>
+      </div>
+
+      <div class="sec-lbl">Configure Run</div>
+      <div class="fg2">
+        <div class="fl"><label>Distance (km)</label><input class="fi" id="c-dist" type="number" value="10" min="1" max="60"/></div>
+        <div class="fl"><label>Target Pace</label><input class="fi" id="c-pace" type="text" value="7:31" placeholder="7:30"/></div>
+      </div>
+      <div class="fg2">
+        <div class="fl"><label>Run Type</label>
+          <select class="fs" id="c-type">
+            <option value="easy">Easy / Recovery</option>
+            <option value="tempo">Tempo</option>
+            <option value="long" selected>Long Run</option>
+            <option value="race">Race Effort</option>
+            <option value="intervals">Intervals</option>
+          </select>
+        </div>
+        <div class="fl"><label>Weather</label>
+          <select class="fs" id="c-weather">
+            <option value="cool">Cool &amp; dry</option>
+            <option value="warm" selected>Warm (Mumbai AM)</option>
+            <option value="hot">Hot (28°C+)</option>
+            <option value="humid">Humid</option>
+          </select>
+        </div>
+      </div>
+      <div class="fl"><label>AI Voice</label>
+        <select class="fs" id="c-voice"><option value="1">On (speaks in earphone)</option><option value="0">Off (text only)</option></select>
+      </div>
+
+      <button class="btn-start" onclick="startRun(false)">▶ START RUN</button>
+      <button class="btn-sec" onclick="startRun(true)">▷ Demo Mode — no GPS needed</button>
+      <button class="btn-sec" onclick="renderHistory();go('s-history')" style="border-color:rgba(0,200,255,.3);color:var(--blue);">📋 Run History &amp; Export</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN: LIVE RUN
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="s-live">
+    <!-- RUN SHIELD — tap-proof overlay during run -->
+    <div class="shield" id="run-shield"
+         ontouchstart="shieldTouchStart(event)"
+         ontouchend="shieldTouchEnd(event)"
+         onmousedown="shieldTouchStart(event)"
+         onmouseup="shieldTouchEnd(event)">
+      <div class="shield-clock" id="sh-clock">00:00</div>
+      <div class="shield-sub">elapsed · tap &amp; hold 2s to unlock</div>
+      <div class="shield-stats">
+        <div class="shield-stat">
+          <div class="shield-sv" id="sh-dist" style="color:var(--green);">0.00</div>
+          <div class="shield-sl">km</div>
+        </div>
+        <div class="shield-stat">
+          <div class="shield-sv" id="sh-pace" style="color:var(--blue);">--:--</div>
+          <div class="shield-sl">min/km</div>
+        </div>
+        <div class="shield-stat">
+          <div class="shield-sv" id="sh-hr" style="color:var(--muted);">--</div>
+          <div class="shield-sl">bpm</div>
+        </div>
+      </div>
+      <div class="shield-progress"><div class="shield-progress-fill" id="sh-prog"></div></div>
+      <div class="shield-hint">🔒 Hold 2s to unlock</div>
+    </div>
+    <div class="hdr" style="padding:10px 18px 8px;">
+      <div>
+        <div style="display:flex;align-items:baseline;gap:6px;">
+          <div class="logo" style="font-size:17px;">PACE<span>AI</span></div>
+          <div style="font-size:8px;color:#ffffff;font-family:'Share Tech Mono',monospace;letter-spacing:1px;">v9.3</div>
+        </div>
+        <div style="font-size:9px;color:var(--muted);font-family:'Rajdhani',sans-serif;letter-spacing:2px;text-transform:uppercase;" id="live-type">Long Run · 10km</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="mute-btn" id="mute-btn" onclick="toggleMute()">🔊</button>
+        <button class="mute-btn" id="shield-btn" onclick="showShield()" title="Lock screen">🔒</button>
+        <div class="pill pill-live" id="live-pill"><div class="ldot"></div>LIVE</div>
+      </div>
+    </div>
+
+    <div class="clock-wrap">
+      <div class="clock" id="live-clock">00:00</div>
+      <div class="clock-sub" id="live-sub">elapsed</div>
+      <div class="src-row">
+        <span class="src-tag" id="src-gps">📍 GPS init</span>
+        <span class="src-tag" id="src-ble">♥ HR sim</span>
+      </div>
+    </div>
+
+    <div class="zstrip">
+      <div class="zseg" id="z1" style="background:#4ade80;opacity:.18;"></div>
+      <div class="zseg" id="z2" style="background:#86efac;opacity:.18;"></div>
+      <div class="zseg" id="z3" style="background:#facc15;opacity:.18;"></div>
+      <div class="zseg" id="z4" style="background:#fb923c;opacity:.18;"></div>
+      <div class="zseg" id="z5" style="background:#f87171;opacity:.18;"></div>
+    </div>
+
+    <div class="mrow">
+      <div class="ms"><div class="msv" id="l-dist" style="color:var(--green);">0.00</div><div class="msu" id="l-dist-unit">km</div></div>
+      <div class="ms"><div class="msv" id="l-pace" style="color:var(--blue);">--:--</div><div class="msu" id="l-pace-unit">min/km</div></div>
+      <div class="ms"><div class="msv" id="l-hr" style="color:var(--muted);">--</div><div class="msu" id="l-zone">bpm</div></div>
+    </div>
+
+    <!-- scrollable live content -->
+    <div class="scroller" id="live-scroll">
+
+      <div class="audio-ind" id="audio-ind" style="display:none;">
+        <div class="waves"><div class="wv"></div><div class="wv"></div><div class="wv"></div><div class="wv"></div><div class="wv"></div></div>
+        <div class="audio-txt" id="audio-txt">Coach speaking...</div>
+      </div>
+
+      <div class="mgrid">
+        <div class="mc mc-g"><div class="mcl">Cadence</div><div class="mcv" id="l-cad" style="color:var(--green);">--</div><div class="mcs" id="l-cad-s">steps/min</div></div>
+        <div class="mc mc-b"><div class="mcl">Steps</div><div class="mcv" id="l-steps" style="color:var(--blue);">--</div><div class="mcs" id="l-steps-unit">total</div></div>
+        <div class="mc mc-w"><div class="mcl">Impact</div><div class="mcv" id="l-impact" style="color:var(--warn);">--</div><div class="mcs" id="l-impact-s">G per step</div></div>
+        <div class="mc mc-b"><div class="mcl">GCT</div><div class="mcv" id="l-gct" style="color:var(--blue);">--</div><div class="mcs" id="l-gct-s">contact ms</div></div>
+      </div>
+
+      <div class="fat-card">
+        <div class="fat-top"><div class="fat-lbl">Composite Fatigue</div><div class="fat-val" id="fat-val" style="color:var(--blue);">0.0 / 10</div></div>
+        <div class="fat-bg"><div class="fat-fill" id="fat-bar" style="width:0%;background:var(--blue);"></div></div>
+        <div class="fat-grid">
+          <div class="fat-comp"><div class="fat-cv" id="fat-hr" style="color:var(--red);">0</div><div class="fat-cl">HR Drift</div></div>
+          <div class="fat-comp"><div class="fat-cv" id="fat-cad" style="color:var(--warn);">0</div><div class="fat-cl">Cadence</div></div>
+          <div class="fat-comp"><div class="fat-cv" id="fat-gct" style="color:var(--blue);">0</div><div class="fat-cl">GCT</div></div>
+          <div class="fat-comp"><div class="fat-cv" id="fat-imp" style="color:var(--green);">0</div><div class="fat-cl">Impact</div></div>
+        </div>
+      </div>
+
+      <div class="pred">
+        <div class="pred-hdr"><div class="pred-title">⚡ Live Predictions</div><div style="font-size:9px;color:var(--muted);font-family:'Rajdhani',sans-serif;" id="pred-src">sim</div></div>
+        <div class="pred-body">
+          <div class="pr"><span class="pk">Est. finish</span><span class="pv" id="p-finish" style="color:var(--green);">—</span></div>
+          <div class="pr"><span class="pk">Remaining</span><span class="pv" id="p-remain">—</span></div>
+          <div class="pr"><span class="pk">Avg pace</span><span class="pv" id="p-avgpace" style="color:var(--blue);">—</span></div>
+          <div class="pr"><span class="pk">HR vs max</span><span class="pv" id="p-hr">—</span></div>
+          <div class="pr"><span class="pk">Fatigue risk</span><span class="pv" id="p-risk">—</span></div>
+        </div>
+      </div>
+
+      <div class="feed-lbl">🤖 AI Coach Feed</div>
+      <div class="feed" id="ai-feed"></div>
+      <div style="height:8px;"></div>
+    </div><!-- end live scroller -->
+
+    <!-- INLINE controls — no position:fixed -->
+    <div class="ctrl" id="live-ctrl">
+      <button class="btn-c btn-p" onclick="pauseRun()">⏸ Pause</button>
+      <button class="btn-c btn-s" onclick="endRun()">■ End Run</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN: PAUSED
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="s-paused">
+    <div class="hdr"><div class="logo">PACE<span>AI</span></div><div class="pill pill-pause">PAUSED</div></div>
+    <div class="scroller" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+      <div style="font-size:56px;margin-bottom:12px;">⏸</div>
+      <div style="font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:700;color:var(--warn);letter-spacing:2px;margin-bottom:6px;">RUN PAUSED</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:28px;">Take your time. Resume when ready.</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:300px;margin-bottom:24px;">
+        <div class="pcstat"><div class="pcsv" id="p-dist" style="font-size:18px;">0.00</div><div class="pcsu">km</div></div>
+        <div class="pcstat"><div class="pcsv" id="p-time" style="font-size:18px;">00:00</div><div class="pcsu">time</div></div>
+        <div class="pcstat"><div class="pcsv" id="p-fat" style="font-size:18px;">0.0</div><div class="pcsu">fatigue</div></div>
+      </div>
+      <button class="btn-start" style="width:260px;" onclick="resumeRun()">▶ Resume</button>
+      <button class="btn-sec" style="width:260px;" onclick="endRun()">■ End Run</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN: DONE
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="s-done">
+    <div class="hdr"><div class="logo">PACE<span>AI</span></div><div class="pill pill-idle">DONE</div></div>
+    <div class="scroller">
+      <div class="done-hero">
+        <div style="font-size:44px;margin-bottom:6px;">🏁</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:24px;font-weight:700;color:var(--green);letter-spacing:2px;">RUN COMPLETE</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">Run Summary</div>
+        <div class="sum-grid">
+          <div class="sbox"><div class="sv" id="d-dist" style="color:var(--green);">—</div><div class="su">km</div></div>
+          <div class="sbox"><div class="sv" id="d-time" style="color:var(--blue);">—</div><div class="su">time</div></div>
+          <div class="sbox"><div class="sv" id="d-pace">—</div><div class="su">avg pace</div></div>
+          <div class="sbox"><div class="sv" id="d-hr">—</div><div class="su">avg hr</div></div>
+          <div class="sbox"><div class="sv" id="d-steps">—</div><div class="su">steps</div></div>
+          <div class="sbox"><div class="sv" id="d-cad">—</div><div class="su">avg cadence</div></div>
+        </div>
+        <div class="sum-lbl" style="margin-top:4px;">HR Zone Split</div>
+        <div id="d-zones"></div>
+      </div>
+      <div class="sum-lbl">Export</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;" id="d-export"></div>
+      <div class="sum-lbl">Coach Feed</div>
+      <div class="feed" id="d-feed"></div>
+      <div style="height:14px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <button class="btn-start" style="margin-top:0;" onclick="go('s-setup')">← New Run</button>
+        <button onclick="renderHistory();go('s-history')" style="padding:16px;background:rgba(0,200,255,.12);border:1px solid rgba(0,200,255,.3);border-radius:10px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:16px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">📋 History</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN: HISTORY
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="s-history">
+    <div class="hdr">
+      <div><div class="logo">PACE<span>AI</span></div><div style="font-size:9px;color:var(--muted);font-family:'Rajdhani',sans-serif;letter-spacing:2px;text-transform:uppercase;">History</div></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn-sm" id="hist-export" onclick="downloadAllCSV()" style="display:none;">⬇ All CSV</button>
+        <button class="btn-icon" onclick="go('s-setup')">✕</button>
+      </div>
+    </div>
+    <div class="scroller"><div id="hist-list"></div></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       SCREEN: SETTINGS
+  ══════════════════════════════════════════════ -->
+  <div class="screen" id="s-settings">
+    <div class="hdr">
+      <div><div class="logo">PACE<span>AI</span></div><div style="font-size:9px;color:var(--muted);font-family:'Rajdhani',sans-serif;letter-spacing:2px;text-transform:uppercase;">Settings</div></div>
+      <button class="btn-icon" onclick="go('s-setup')">✕</button>
+    </div>
+    <div class="scroller">
+      <div class="sec-lbl">Anthropic API Key — Required for AI Coaching</div>
+      <div style="background:rgba(0,200,255,.06);border:1px solid rgba(0,200,255,.2);border-radius:10px;padding:14px;margin-bottom:12px;">
+        <div style="font-size:13px;color:var(--blue);line-height:1.7;margin-bottom:12px;">
+          Get your key at <strong style="color:var(--text);">console.anthropic.com</strong><br/>
+          Sign up → API Keys → Create Key<br/>
+          <span style="color:var(--muted);font-size:11px;">Stored only on this device.</span>
+        </div>
+        <label style="display:block;font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Paste API Key</label>
+        <input class="fi" id="key-input" type="password" placeholder="sk-ant-api03-..." style="font-size:14px;margin-bottom:10px;"/>
+        <div style="display:flex;gap:8px;">
+          <button onclick="testKey()" style="flex:1;padding:13px;background:rgba(0,200,255,.12);border:1px solid rgba(0,200,255,.3);border-radius:10px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">Test</button>
+          <button onclick="saveKey()" style="flex:2;padding:13px;background:var(--green);color:#020a0d;border:none;border-radius:10px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">Save Key</button>
+        </div>
+        <div id="key-msg" style="margin-top:10px;font-size:12px;text-align:center;display:none;padding:8px;border-radius:6px;background:rgba(0,0,0,.3);"></div>
+      </div>
+      <div class="sec-lbl">Current Status</div>
+      <div class="status-row">
+        <div><div class="status-lbl">Stored Key</div><div class="status-val s-err" id="key-status">No key — AI coach disabled</div></div>
+        <button onclick="clearKey()" style="padding:8px 14px;background:rgba(255,69,96,.1);border:1px solid rgba(255,69,96,.3);border-radius:8px;color:var(--red);font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">Clear</button>
+      </div>
+      <div class="sec-lbl" style="margin-top:16px;">Cost Guide</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:13px;line-height:1.9;color:var(--text);">
+        <div>Each AI call ≈ <strong style="color:var(--green);">₹0.01–0.02</strong></div>
+        <div>Full 10K ≈ <strong style="color:var(--green);">₹1–2 total</strong></div>
+        <div>Marathon ≈ <strong style="color:var(--green);">₹3–5 total</strong></div>
+        <div style="color:var(--muted);font-size:11px;margin-top:6px;">New accounts get free credits — enough for hundreds of runs.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+'use strict';
+
+// ── PROFILE (from 323 Garmin runs) ───────────────────────
+const MHR = 185, RHR = 65, BASE_CAD = 172, BASE_GCT = 245, BASE_IMP = 2.1;
+const ZC = ['#4ade80','#86efac','#facc15','#fb923c','#f87171'];
+const ZN = ['Z1 Recovery','Z2 Aerobic','Z3 Tempo','Z4 Threshold','Z5 Max'];
+
+// ── STATE ─────────────────────────────────────────────────
+let S = {}; // run state
+let CFG = {}; // run config
+let timer = null;
+let demo = false;
+let bleHR = 0, bleDevice = null;
+let fpDevice = null, fpConnected = false;
+let fpCadence = 0, fpImpact = 0, fpGCT = 0, fpSteps = 0;
+let fpStepsOffset = 0; // ESP32 step counter offset — subtracted to get per-run steps
+const FP_SERVICE  = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const FP_CHAR     = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+let gpsId = null, gpsLast = null, gpsTime = null, gpsDist = 0, gpsPace = 0;
+let gpsPositions = [], gpsAcc = null;
+let gpsPaceTime = 0; // timestamp of last valid pace update — for staleness detection
+let aiBusy = false;
+let wakeLock = null;
+let currentRunId = null; // set at run start, used by coach log
+let voiceOn = true;
+let alerts = [];
+const HIST_KEY = 'paceai_runs_v1';
+const LOG_KEY  = 'paceai_coach_log_v1';
+
+// ── SCREEN ROUTER ─────────────────────────────────────────
+function go(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── TOAST ─────────────────────────────────────────────────
+function toast(msg, ms=2500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', ms);
+}
+
+// ── HELPERS ───────────────────────────────────────────────
+function sTs(s) {
+  s = Math.max(0, Math.floor(s));
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+  if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+function pStr(sp) {
+  if(!sp||sp<=0||!isFinite(sp)) return '--:--';
+  return `${Math.floor(sp/60)}:${String(Math.round(sp%60)).padStart(2,'0')}`;
+}
+function zone(hr) {
+  const p=hr/MHR;
+  return p<.6?1:p<.7?2:p<.8?3:p<.9?4:5;
+}
+function parsePace(s) {
+  try { const [m,sc]=s.split(':').map(Number); return m*60+(sc||0); }
+  catch { return 451; }
+}
+
+// ── SIMULATION ────────────────────────────────────────────
+function simHR(el, fat) {
+  const wp = CFG.weather==='hot'?12:CFG.weather==='humid'?8:CFG.weather==='warm'?4:0;
+  const tm = CFG.type==='tempo'?8:CFG.type==='race'?14:CFG.type==='easy'?-10:0;
+  const base = RHR+78+tm+wp;
+  return Math.min(MHR-2, Math.round(base + Math.min(el/3600*10,16) + fat*2.2
+    + Math.sin(el*.31)*2.5 + Math.cos(el*.17)*1.5));
+}
+function simPace(el, fat, hr, tp) {
+  const slow = Math.max(0,(el-1200)/3600*18);
+  const hrS = hr/MHR>.92?20:hr/MHR>.87?9:hr/MHR>.82?3:0;
+  return tp + slow + hrS + Math.sin(el*.09)*4;
+}
+function simCad(el, fat, hr) {
+  const z=zone(hr), drop=fat>4?-(fat-4)*1.5:0;
+  return Math.round(BASE_CAD+(z>=4?5:0)+drop+Math.round(Math.sin(el*.2)*2));
+}
+function simImpact(cad, fat) {
+  return Math.max(1.2, Math.min(3.5, +(BASE_IMP+fat*.08+(172-cad)*.01+(Math.random()-.5)*.1).toFixed(2)));
+}
+function simGCT(cad, fat) {
+  return Math.round(Math.max(180, Math.min(340, BASE_GCT+(172-cad)*2+fat*3+Math.round((Math.random()-.5)*8))));
+}
+function calcFat(hr, cad, gct, imp) {
+  const hrF = Math.min(10, Math.max(0,(hr-(RHR+78))/20)*3.5);
+  // Only penalise cadence after 30s — prevents stationary foot pod inflating fatigue
+  const cF  = (S.elapsed > 30) ? Math.min(10, Math.max(0,BASE_CAD-cad)*.6) : 0;
+  const gF  = Math.min(10, Math.max(0,gct-BASE_GCT)*.05);
+  const iF  = Math.min(10, Math.max(0,imp-BASE_IMP)*4);
+  return { total:+(hrF*.35+cF*.25+gF*.20+iF*.20).toFixed(1), hr:+hrF.toFixed(1), cad:+cF.toFixed(1), gct:+gF.toFixed(1), imp:+iF.toFixed(1) };
+}
+
+// ── GPS ───────────────────────────────────────────────────
+function haversine(a,b) {
+  const R=6371, dLat=(b.latitude-a.latitude)*Math.PI/180, dLon=(b.longitude-a.longitude)*Math.PI/180;
+  const x=Math.sin(dLat/2)**2+Math.cos(a.latitude*Math.PI/180)*Math.cos(b.latitude*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function startGPS() {
+  if(demo||!navigator.geolocation) return;
+  if(location.protocol==='file:'){
+    setGPS('⚠ Open via HTTPS for GPS','err','⚠️'); return;
+  }
+  setGPS('Acquiring GPS signal...','sim','⏳');
+  // Pre-warm: getCurrentPosition triggers permission prompt immediately
+  // and gets first fix fast. watchPosition then takes over.
+  navigator.geolocation.getCurrentPosition(
+    pos => { handleGPSPosition(pos); },
+    err => { handleGPSError(err); },
+    {enableHighAccuracy:true, timeout:10000, maximumAge:0}
+  );
+  gpsId = navigator.geolocation.watchPosition(pos => { handleGPSPosition(pos); },
+    err => { handleGPSError(err); },
+    {enableHighAccuracy:true,timeout:15000,maximumAge:3000});
+}
+
+function handleGPSPosition(pos) {
+  const now = Date.now();
+    gpsAcc = Math.round(pos.coords.accuracy);
+    if(gpsLast && gpsTime && S.phase==='running') {
+      const d = haversine(gpsLast.coords, pos.coords);
+      const dt = (now-gpsTime)/1000;
+      // Mumbai urban GPS: relaxed to 150m accuracy, 3m min movement
+      if(d>.003 && dt>0 && gpsAcc<150) {
+        gpsDist += d;
+        gpsPositions.push({d,dt});
+        if(gpsPositions.length>5) gpsPositions.shift();
+        // Always calculate haversine pace from sliding window
+        const td=gpsPositions.reduce((s,p)=>s+p.d,0);
+        const tt=gpsPositions.reduce((s,p)=>s+p.dt,0);
+        let harvPace = (td>0) ? tt/td : 0;
+        // Also read coords.speed if available (m/s → secs/km)
+        let speedPace = (pos.coords.speed && pos.coords.speed>0.5)
+                        ? 1000/pos.coords.speed : 0;
+        // Prefer haversine (more stable) — use coords.speed only if
+        // haversine window has fewer than 3 points (not enough data yet)
+        let rawPace = (gpsPositions.length>=3) ? harvPace : (speedPace||harvPace);
+        // Bounds filter: only accept 3:30/km–15:00/km, reject noise
+        if(rawPace>=210 && rawPace<=900) {
+          gpsPace = rawPace;
+          gpsPaceTime = Date.now(); // record when pace last updated
+        }
+      }
+    }
+    // First GPS fix: anchor gpsDist to wherever S.dist is now
+    if(gpsDist===0 && S.dist>0) gpsDist = S.dist;
+    gpsLast=pos; gpsTime=now;
+    setGPS(`GPS ✓ ±${gpsAcc}m`,'ok','🛰');
+}
+
+function handleGPSError(err) {
+  let m;
+  if(err.code===1) m='GPS denied — allow location in Chrome settings';
+  else if(err.code===2) m='GPS unavailable — pace simulated';
+  else m='GPS timeout — pace simulated';
+  setGPS(m,'err','⚠️');
+}
+
+function setGPS(msg,cls,icon) {
+  const e=document.getElementById('gps-txt'), i=document.getElementById('gps-icon');
+  if(e){e.textContent=msg; e.className=`status-val s-${cls}`;}
+  if(i) i.textContent=icon;
+}
+function stopGPS() {
+  if(gpsId) navigator.geolocation.clearWatch(gpsId);
+  gpsId=null;
+}
+
+// ── BLE ───────────────────────────────────────────────────
+async function connectBLE() {
+  const btn=document.getElementById('ble-btn'), txt=document.getElementById('ble-txt');
+  if(!navigator.bluetooth) { toast('Web Bluetooth needs Chrome on Android'); return; }
+  try {
+    btn.disabled=true; btn.textContent='Scanning...';
+    txt.textContent='Scanning for Garmin FR245...'; txt.className='status-val s-sim';
+    bleDevice = await navigator.bluetooth.requestDevice({filters:[{services:['heart_rate']}],optionalServices:['heart_rate']});
+    const srv = await bleDevice.gatt.connect();
+    const svc = await srv.getPrimaryService('heart_rate');
+    const chr = await svc.getCharacteristic('heart_rate_measurement');
+    await chr.startNotifications();
+    chr.addEventListener('characteristicvaluechanged', e => {
+      const v=e.target.value, f=v.getUint8(0);
+      bleHR = (f&1)?v.getUint16(1,true):v.getUint8(1);
+    });
+    txt.textContent=`Connected: ${bleDevice.name||'Garmin FR245'}`; txt.className='status-val s-ok';
+    btn.textContent='✓ Connected'; toast('Garmin FR245 connected!');
+    bleDevice.addEventListener('gattserverdisconnected',()=>{ bleHR=0; btn.disabled=false; btn.textContent='Reconnect'; txt.textContent='Disconnected'; txt.className='status-val s-err'; });
+  } catch(e) {
+    btn.disabled=false; btn.textContent='Retry';
+    txt.textContent=e.name==='NotFoundError'?'No device chosen':'BLE error — using sim HR';
+    txt.className='status-val s-sim';
+  }
+}
+
+
+// ── WAKE LOCK ─────────────────────────────────────────────
+async function acquireWakeLock() {
+  if(!('wakeLock' in navigator)) return; // not supported
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      // Screen lock released by system (e.g. incoming call)
+      // Re-acquire if still running
+      if(S.phase === 'running') setTimeout(acquireWakeLock, 1000);
+    });
+    console.log('Wake lock acquired');
+  } catch(e) {
+    console.warn('Wake lock failed:', e);
+    // Not fatal — run continues, just screen may sleep
+  }
+}
+async function releaseWakeLock() {
+  if(wakeLock) {
+    try { await wakeLock.release(); } catch(e) {}
+    wakeLock = null;
+  }
+}
+
+async function connectFootPod() {
+  const btn=el('fp-btn'), txt=el('fp-txt');
+  if(!navigator.bluetooth){ toast('Web Bluetooth needs Chrome on Android'); return; }
+  try {
+    btn.disabled=true; btn.textContent='Scanning...';
+    txt.textContent='Scanning for PaceAI-FootPod...'; txt.className='status-val s-sim';
+    fpDevice = await navigator.bluetooth.requestDevice({
+      filters:[{name:'PaceAI-FootPod'}],
+      optionalServices:[FP_SERVICE]
+    });
+    const srv = await fpDevice.gatt.connect();
+    const svc = await srv.getPrimaryService(FP_SERVICE);
+    const chr = await svc.getCharacteristic(FP_CHAR);
+    await chr.startNotifications();
+    chr.addEventListener('characteristicvaluechanged', e => {
+      const raw = new TextDecoder().decode(e.target.value);
+      const parts = raw.split(',');
+      if(parts.length === 4) {
+        const cad = parseFloat(parts[0]);
+        const imp = parseFloat(parts[1]);
+        const gct = parseFloat(parts[2]);
+        const stp = parseInt(parts[3]);
+        // Only accept realistic values — discard noise
+        if(cad > 0 && cad < 200)  fpCadence = cad * 2; // single foot pod × 2 = total cadence
+        if(imp > 0 && imp < 10)   fpImpact  = imp;
+        if(gct > 50 && gct < 600) fpGCT     = gct;
+        if(stp >= fpSteps)        fpSteps   = stp; // never go backwards
+        // If foot pod connected AFTER run started, set offset on first packet
+        if(S.phase==='running' && fpStepsOffset===0 && stp>0) fpStepsOffset=stp;
+      }
+    });
+    fpConnected = true;
+    txt.textContent='Connected: PaceAI-FootPod'; txt.className='status-val s-ok';
+    btn.textContent='✓ Connected'; toast('Foot pod connected!');
+    fpDevice.addEventListener('gattserverdisconnected', () => {
+      fpConnected=false; fpCadence=0; fpImpact=0; fpGCT=0;
+      // Keep fpStepsOffset so reconnect continues from same run baseline
+      btn.disabled=false; btn.textContent='Reconnect';
+      txt.textContent='Disconnected — values simulated';
+      txt.className='status-val s-err';
+      toast('Foot pod disconnected — using simulation');
+    });
+  } catch(e) {
+    btn.disabled=false; btn.textContent='Retry';
+    txt.textContent=e.name==='NotFoundError'?'No device chosen':'Connection failed';
+    txt.className='status-val s-sim';
+  }
+}
+
+// ── RUN SHIELD ────────────────────────────────────────────
+let shieldActive = false;
+let shieldHoldTimer = null;
+let shieldHoldStart = 0;
+
+function showShield() {
+  shieldActive = true;
+  el('run-shield').classList.add('active');
+  el('sh-prog').style.width = '0%';
+}
+function hideShield() {
+  shieldActive = false;
+  el('run-shield').classList.remove('active');
+  el('sh-prog').style.width = '0%';
+  clearInterval(shieldHoldTimer);
+  shieldHoldTimer = null;
+  toast('🔓 Unlocked');
+}
+function shieldTouchStart(e) {
+  e.preventDefault();
+  shieldHoldStart = Date.now();
+  el('sh-prog').style.transition = 'width 2s linear';
+  el('sh-prog').style.width = '100%';
+  shieldHoldTimer = setTimeout(() => {
+    hideShield();
+  }, 2000);
+}
+function shieldTouchEnd(e) {
+  e.preventDefault();
+  if(shieldHoldTimer) {
+    clearTimeout(shieldHoldTimer);
+    shieldHoldTimer = null;
+  }
+  el('sh-prog').style.transition = 'none';
+  el('sh-prog').style.width = '0%';
+}
+function updateShield() {
+  if(!shieldActive) return;
+  el('sh-clock').textContent = sTs(S.elapsed);
+  el('sh-dist').textContent  = (S.dist||0).toFixed(2);
+  el('sh-pace').textContent  = pStr(S.pace);
+  const shHR = el('sh-hr');
+  shHR.textContent = S.hr||'--';
+  shHR.style.color = ZC[zone(S.hr||0)-1]||'var(--muted)';
+}
+
+// ── VOICE ─────────────────────────────────────────────────
+function speak(txt) {
+  if(!voiceOn||!speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(txt);
+  u.rate=0.92; u.pitch=1.0; u.volume=1.0;
+  u.onstart=()=>{ const i=document.getElementById('audio-ind'),t=document.getElementById('audio-txt'); if(i)i.style.display='flex'; if(t)t.textContent=txt.length>60?txt.slice(0,60)+'...':txt; };
+  u.onend=u.onerror=()=>{ const i=document.getElementById('audio-ind'); if(i)i.style.display='none'; };
+  speechSynthesis.speak(u);
+}
+function toggleMute() {
+  voiceOn=!voiceOn;
+  const b=document.getElementById('mute-btn');
+  if(b){ b.textContent=voiceOn?'🔊':'🔇'; b.className=voiceOn?'mute-btn':'mute-btn muted'; }
+  if(!voiceOn&&speechSynthesis) speechSynthesis.cancel();
+  const i=document.getElementById('audio-ind'); if(i&&!voiceOn) i.style.display='none';
+  toast(voiceOn?'🔊 Voice on':'🔇 Voice muted');
+}
+
+// ── AI FEED ───────────────────────────────────────────────
+function addAlert(type, icon, text, sayIt=false) {
+  const a={type,icon,text,ts:sTs(S.elapsed||0),id:Date.now()+Math.random()};
+  alerts.unshift(a);
+  const feed=document.getElementById('ai-feed');
+  if(feed) {
+    const el=document.createElement('div');
+    el.className=`ai-item t-${type}`;
+    el.innerHTML=`<div class="ai-icon">${icon}</div><div><div class="ai-txt">${text}</div><div class="ai-ts">${a.ts}</div></div>`;
+    feed.insertBefore(el,feed.firstChild);
+    if(feed.children.length>18) feed.removeChild(feed.lastChild);
+  }
+  if(sayIt) speak(text);
+}
+function setThinking(on) {
+  const feed=document.getElementById('ai-feed');
+  if(!feed) return;
+  const ex=document.getElementById('ai-thinking');
+  if(on&&!ex){
+    const el=document.createElement('div'); el.id='ai-thinking'; el.className='thinking';
+    el.innerHTML='<span style="font-size:14px">🤖</span><div class="dots"><span></span><span></span><span></span></div><span style="font-size:11px;color:var(--blue);">Coach analysing...</span>';
+    feed.insertBefore(el,feed.firstChild);
+  } else if(!on&&ex) ex.remove();
+}
+
+// ── CLAUDE AI ─────────────────────────────────────────────
+async function callAI(trigger) {
+  if(aiBusy) return;
+  const key=getKey(); if(!key){ S.lastAI=S.elapsed; return; }
+  aiBusy=true; setThinking(true);
+  const z=zone(S.hr||0), tp=CFG.tPace||451;
+  const pDiff=S.pace-tp, fat=S.fatigue||0;
+  const pSt=Math.abs(pDiff)<6?'on target':pDiff>0?`${Math.round(pDiff)}s/km slow`:`${Math.round(Math.abs(pDiff))}s/km fast`;
+  const rem=Math.max(0,parseFloat(CFG.dist)-(S.dist||0)).toFixed(1);
+  const prompt=`You are coaching Girish — Mumbai runner, 323 runs, 3043km, full marathon Jan 2026. Max HR 185bpm. Experienced runner.
+
+LIVE DATA:
+Trigger: ${trigger}
+Distance: ${(S.dist||0).toFixed(2)}km of ${CFG.dist}km (${rem}km left), Time: ${sTs(S.elapsed||0)}
+Pace: ${pStr(S.pace)}/km vs target ${pStr(tp)}/km — ${pSt}
+HR: ${S.hr}bpm Zone ${z} ${ZN[z-1]} (${Math.round((S.hr||0)/185*100)}% of max 185)
+Cadence: ${S.cadence}spm (baseline 172), GCT: ${S.gct}ms, Impact: ${S.impact}G
+Fatigue: ${fat}/10 (HR drift:${S.hrF} Cad:${S.cadF} GCT:${S.gctF} Impact:${S.impF})
+Run type: ${CFG.type}, Weather: ${CFG.weather}
+
+ONE sharp coaching instruction, 1–2 sentences. Reference actual numbers. Experienced runner — no basics. Speak naturally as if in earphone.`;
+
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:100,messages:[{role:'user',content:prompt}]})
+    });
+    if(res.ok){
+      const d=await res.json(), t=d.content?.find(b=>b.type==='text')?.text||'';
+      if(t) {
+        addAlert('ai','🤖',t,true);
+        logCoachEvent(trigger, t);
+      }
+    } else if(res.status===401){ addAlert('warn','🔑','Invalid API key — check Settings.'); }
+    else if(res.status===429){ addAlert('warn','⏳','Rate limit — will retry next check-in.'); }
+    else { addAlert('warn','⚠️',`AI error ${res.status}`); }
+  } catch { addAlert('warn','⚠️','Network error — AI coach will retry.'); }
+  aiBusy=false; setThinking(false); S.lastAI=S.elapsed;
+}
+
+// ── TICK ──────────────────────────────────────────────────
+function tick() {
+  if(S.phase!=='running') return;
+  S.elapsed++;
+  const tp=CFG.tPace;
+
+  // HR
+  S.hr = bleHR>0&&!demo ? bleHR : simHR(S.elapsed, S.fatigue);
+  S.hrHistory.push(S.hr); if(S.hrHistory.length>180) S.hrHistory.shift();
+  S.hrSum+=S.hr;
+
+  // Pace / dist
+  const gpsPaceStale = gpsPace>0 && (Date.now()-gpsPaceTime)>15000;
+  if(!demo && gpsPace>0 && !gpsPaceStale){
+    S.pace = gpsPace;
+    // Accumulate distance every tick using GPS pace
+    S.dist += 1/S.pace;
+    // If GPS callback jumped ahead, sync up (never go back)
+    if(gpsDist > S.dist) S.dist = gpsDist;
+  } else {
+    // GPS stale or unavailable — use sim pace for display only
+    // but keep accumulating from last known gpsDist
+    S.pace = simPace(S.elapsed,S.fatigue,S.hr,tp);
+    S.dist += 1/S.pace;
+    if(gpsPaceStale) setGPS(`GPS stale — last fix >${Math.round((Date.now()-gpsPaceTime)/1000)}s ago`,'sim','⚠️');
+  }
+
+  // Foot pod — real hardware when connected, sim otherwise
+  if(fpConnected && fpCadence>0) {
+    S.cadence = fpCadence;
+    S.impact  = fpImpact;
+    S.gct     = fpGCT;
+    S.steps   = Math.max(0, fpSteps - fpStepsOffset); // offset-corrected per-run steps
+  } else {
+    S.cadence=simCad(S.elapsed,S.fatigue,S.hr);
+    S.impact=simImpact(S.cadence,S.fatigue);
+    S.gct=simGCT(S.cadence,S.fatigue);
+    S.steps+=Math.round(S.cadence/60);
+  }
+  S.cadSum+=S.cadence; S.count++;
+
+  // Zone time
+  const z=zone(S.hr);
+  S.zoneTime[z-1]++;
+  if(z>=4) S.fatigue=Math.min(10,S.fatigue+.006);
+  else if(z<=2) S.fatigue=Math.max(0,S.fatigue-.002);
+
+  // Fatigue components
+  const fc=calcFat(S.hr,S.cadence,S.gct,S.impact);
+  S.fatigue=fc.total; S.hrF=fc.hr; S.cadF=fc.cad; S.gctF=fc.gct; S.impF=fc.imp;
+
+  // Rule alerts
+  if(z===5&&S.elapsed%30===0) addAlert('danger','🔴',`HR ${S.hr}bpm — Zone 5. Ease off now.`,true);
+  if(z===4&&zone(S.hr-4)===3&&S.elapsed>30) addAlert('warn','⚡',`Entering Z4 at ${S.hr}bpm${CFG.type==='easy'?' — too hard for easy run.':'.'}`,false);
+  const pd=S.pace-tp;
+  if(pd>20&&S.elapsed%75===0&&S.elapsed>75) addAlert('warn','🐢',`${Math.round(pd)}s/km behind target — lift your turnover.`,false);
+  if(pd<-20&&S.elapsed%75===0&&S.elapsed>75) addAlert('warn','⚡',`${Math.round(Math.abs(pd))}s/km too fast — you'll pay for this later.`,false);
+  if(S.cadence<165&&S.elapsed%60===0&&S.elapsed>60) addAlert('warn','👟',`Cadence ${S.cadence}spm — below your 172 baseline. Pick it up.`,false);
+  if(S.impact>2.8&&S.elapsed%90===0) addAlert('warn','💥',`Impact ${S.impact}G — soften your landing.`,false);
+  if(fc.total>7&&S.elapsed%60===0) addAlert('danger','😮‍💨',`High fatigue (${fc.total}/10) — slow 15s/km now.`,true);
+
+  // km milestones
+  const km=Math.floor(S.dist);
+  if(km>S.lastKm&&km>0){
+    S.lastKm=km;
+    const rem=Math.max(0,parseFloat(CFG.dist)-km);
+    const avg=S.elapsed>0?S.elapsed/S.dist:0;
+    addAlert('good','📍',`${km}km in ${sTs(S.elapsed)} — avg ${pStr(avg)}/km. ${rem>0?rem.toFixed(0)+'km left.':'Push!'}`,true);
+    setTimeout(()=>callAI(`${km}km milestone`),1200);
+  }
+
+  // 2-min AI
+  if(S.elapsed-S.lastAI>=120&&S.elapsed>60&&!aiBusy)
+    setTimeout(()=>callAI('2-min check-in'),400);
+
+  // Goal
+  if(S.dist>=parseFloat(CFG.dist)){ finishRun(false); return; }
+
+  updateUI();
+  updateShield();
+}
+
+// ── UI UPDATE ─────────────────────────────────────────────
+function updateUI() {
+  const z=zone(S.hr||0), zc=ZC[z-1]||'var(--muted)';
+  const tD=parseFloat(CFG.dist);
+
+  // Clock
+  el('live-clock').textContent=sTs(S.elapsed);
+
+  // Source indicators
+  const gi=el('src-gps'), bi=el('src-ble');
+  if(gi){
+    if(demo){gi.textContent='📍 Demo';gi.style.color='var(--warn)';}
+    else if(gpsAcc){gi.textContent=`🛰 ±${gpsAcc}m`;gi.style.color=gpsAcc<20?'var(--green)':'var(--warn)';}
+    else{gi.textContent='📍 No GPS — pace simulated';gi.style.color='var(--red)';}
+  }
+  if(bi){
+    const hrPart = bleHR>0 ? `♥${bleHR} Garmin` : '♥ sim';
+    const fpPart = fpConnected ? `👟${fpCadence.toFixed(0)}spm` : '👟 sim';
+    bi.textContent=`${hrPart} · ${fpPart}`;
+    bi.style.color = (bleHR>0 && fpConnected) ? 'var(--green)' :
+                     (bleHR>0 || fpConnected) ? 'var(--warn)' : 'var(--muted)';
+  }
+  // Update source label accurately
+  const srcEl=el('pred-src');
+  if(srcEl){
+    if(demo) srcEl.textContent='Demo (simulated)';
+    else {
+      const hrSrc=bleHR>0?'BLE HR':'Sim HR';
+      const gpsSrc=gpsPace>0?`GPS ±${gpsAcc||'?'}m`:'Sim Pace';
+      srcEl.textContent=`${hrSrc} · ${gpsSrc}`;
+    }
+  }
+
+  // Zone strip
+  for(let i=1;i<=5;i++){
+    const s=el('z'+i); if(s){
+      s.style.opacity=z===i?'1':'.18';
+      s.className='zseg'+(z===i?' on':'');
+    }
+  }
+
+  // Main row — declare sim flags first, then use them
+  const paceSim = !demo && gpsPace===0;
+  const hrSim = bleHR===0;
+  el('l-dist').textContent=(S.dist||0).toFixed(2);
+  const distUnitEl=el('l-dist-unit');
+  if(distUnitEl) distUnitEl.textContent = paceSim ? '⚡ sim km' : 'km';
+  el('l-pace').textContent=pStr(S.pace);
+  const paceEl=el('l-pace');
+  paceEl.style.opacity = paceSim?'0.6':'1';
+  const paceUnitEl=el('l-pace-unit');
+  if(paceUnitEl) paceUnitEl.textContent = paceSim ? '⚡ SIM PACE' : 'min/km';
+  const hr=el('l-hr'); hr.textContent=S.hr||'--'; hr.style.color=zc;
+  el('l-zone').textContent = hrSim ? '⚡ Sim HR' : (S.hr>0?ZN[z-1]:'bpm');
+
+  // Metrics
+  el('l-cad').textContent=S.cadence||'--';
+  const cadSim = !fpConnected || fpCadence===0;
+  el('l-cad-s').textContent = cadSim ? '⚡ Simulated' :
+    S.cadence>=175?'✓ Optimal':S.cadence<168?'↑ Low':'steps/min';
+  el('l-steps').textContent=S.steps>0?S.steps.toLocaleString():'--';
+  const stepsSubEl=el('l-steps-unit');
+  if(stepsSubEl) stepsSubEl.textContent = cadSim?'⚡ Simulated':'total';
+  const ii=el('l-impact'); ii.textContent=S.impact>0?S.impact.toFixed(2):'--'; ii.style.color=S.impact>2.8?'var(--red)':'var(--warn)';
+  el('l-impact-s').textContent = cadSim ? '⚡ Simulated' : S.impact>2.8?'⚠ High impact':'G per step';
+  el('l-gct').textContent=S.gct||'--';
+  el('l-gct-s').textContent = cadSim ? '⚡ Simulated' : S.gct>280?'⚠ Too long':'contact ms';
+
+  // Fatigue
+  const fat=S.fatigue||0, fc=fat>7?'var(--red)':fat>5?'var(--warn)':'var(--blue)';
+  el('fat-val').textContent=`${fat.toFixed(1)} / 10`; el('fat-val').style.color=fc;
+  const fb=el('fat-bar'); fb.style.width=`${fat*10}%`; fb.style.background=fc;
+  el('fat-hr').textContent=(S.hrF||0).toFixed(1);
+  el('fat-cad').textContent=(S.cadF||0).toFixed(1);
+  el('fat-gct').textContent=(S.gctF||0).toFixed(1);
+  el('fat-imp').textContent=(S.impF||0).toFixed(1);
+
+  // Predictions
+  const ap=S.elapsed>0&&S.dist>0?S.elapsed/S.dist:0;
+  const ef=S.pace>0?S.elapsed+Math.max(0,tD-S.dist)*S.pace:0;
+  el('p-finish').textContent=ef>0?sTs(ef):'—';
+  el('p-remain').textContent=`${Math.max(0,tD-S.dist).toFixed(2)} km`;
+  el('p-avgpace').textContent=ap>0?pStr(ap):'—';
+  const ph=el('p-hr'); ph.textContent=S.hr>0?`${Math.round(S.hr/185*100)}% · Z${z}`:'—'; ph.style.color=zc;
+  const pr=el('p-risk'); pr.textContent=fat>7?'🔴 Critical':fat>5?'🟠 High':fat>3?'🟡 Moderate':'🟢 Low';
+
+  // Paused screen sync
+  el('p-dist').textContent=(S.dist||0).toFixed(2);
+  el('p-time').textContent=sTs(S.elapsed);
+  el('p-fat').textContent=(S.fatigue||0).toFixed(1);
+}
+
+function el(id){ return document.getElementById(id); }
+
+// ── RUN LIFECYCLE ─────────────────────────────────────────
+function startRun(demoMode) {
+  demo=demoMode;
+  voiceOn = el('c-voice').value==='1';
+  CFG={
+    dist: el('c-dist').value||'10',
+    pace: el('c-pace').value||'7:31',
+    type: el('c-type').value,
+    weather: el('c-weather').value,
+    tPace: parsePace(el('c-pace').value||'7:31'),
+  };
+  S={ phase:'running',elapsed:0,dist:0,hr:0,pace:0,cadence:0,steps:0,
+      impact:0,gct:0,fatigue:0,hrF:0,cadF:0,gctF:0,impF:0,
+      zoneTime:[0,0,0,0,0],hrHistory:[],lastKm:0,lastAI:0,
+      hrSum:0,cadSum:0,count:0 };
+  currentRunId = Date.now(); // unique ID shared between run summary and coach log
+  // Record ESP32 cumulative step count as offset — so run steps start from 0
+  shieldActive = false; // reset shield state
+  fpStepsOffset = fpSteps;
+  fpCadence=0; fpImpact=0; fpGCT=0; // reset displayed fp values
+  // Note: fpSteps NOT reset — it holds the ESP32 value; offset subtracts it
+  gpsDist=0;gpsPace=0;gpsPaceTime=0;gpsLast=null;gpsTime=null;gpsPositions=[];gpsAcc=null;
+  alerts=[];
+  el('ai-feed').innerHTML='';
+  el('live-type').textContent=`${CFG.type.charAt(0).toUpperCase()+CFG.type.slice(1)} Run · ${CFG.dist}km`;
+  el('live-pill').innerHTML='<div class="ldot"></div>LIVE';
+  el('live-pill').className='pill pill-live';
+  el('pred-src').textContent=demoMode?'Demo (sim)':'BLE HR + GPS pending';
+  el('mute-btn').textContent='🔊'; el('mute-btn').className='mute-btn';
+  go('s-live');
+  acquireWakeLock();
+  setTimeout(showShield, 3000); // show shield 3s after start (after first AI message)
+  if(!demo) startGPS();
+  timer=setInterval(tick,1000);
+  addAlert('good','🚀',`${CFG.type} run started. Target ${CFG.dist}km at ${CFG.pace}/km. AI coach active.`,true);
+  setTimeout(()=>callAI('run start'),3000);
+}
+function pauseRun() {
+  S.phase='paused'; clearInterval(timer);
+  releaseWakeLock();
+  hideShield();
+  el('live-pill').innerHTML='PAUSED'; el('live-pill').className='pill pill-pause';
+  if(speechSynthesis) speechSynthesis.cancel();
+  go('s-paused');
+  addAlert('warn','⏸','Run paused.');
+}
+function resumeRun() {
+  S.phase='running';
+  acquireWakeLock();
+  setTimeout(showShield, 1500);
+  el('live-pill').innerHTML='<div class="ldot"></div>LIVE'; el('live-pill').className='pill pill-live';
+  go('s-live');
+  addAlert('good','▶️','Resumed.',true);
+  timer=setInterval(tick,1000);
+}
+function endRun() { finishRun(true); }
+function finishRun(manual) {
+  clearInterval(timer); stopGPS();
+  releaseWakeLock();
+  hideShield();
+  if(speechSynthesis) speechSynthesis.cancel();
+  S.phase='done';
+
+  const tD=parseFloat(CFG.dist);
+  const dist=manual?S.dist:tD;
+  const ap=S.elapsed>0&&dist>0?S.elapsed/dist:0;
+  const avgHR=S.count>0?Math.round(S.hrSum/S.count):S.hr;
+  const avgCad=S.count>0?Math.round(S.cadSum/S.count):S.cadence;
+  const zt=S.zoneTime, tot=zt.reduce((a,b)=>a+b,1);
+
+  // Save to storage
+  const rec={
+    id:Date.now(), date:new Date().toISOString(),
+    dateDisplay:new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}),
+    type:CFG.type, weather:CFG.weather, targetDist:CFG.dist, targetPace:CFG.pace,
+    actualDist:+dist.toFixed(2), elapsedSecs:S.elapsed, elapsedDisplay:sTs(S.elapsed),
+    avgPaceDisplay:pStr(ap), avgHR, maxHR:S.hrHistory.length?Math.max(...S.hrHistory):S.hr,
+    avgCadence:avgCad, totalSteps:S.steps, maxFatigue:+(S.fatigue||0).toFixed(1),
+    avgImpact:+(S.impact||0).toFixed(2), avgGCT:S.gct||0,
+    z1:Math.round(zt[0]/tot*100),z2:Math.round(zt[1]/tot*100),z3:Math.round(zt[2]/tot*100),
+    z4:Math.round(zt[3]/tot*100),z5:Math.round(zt[4]/tot*100),
+    aiAlerts:alerts.filter(a=>a.type==='ai').length,
+    dataSource:demo?'Demo':bleHR>0?'BLE+GPS':'GPS+SimHR', completed:!manual
+  };
+  saveRun(rec);
+
+  // Populate done screen
+  el('d-dist').textContent=dist.toFixed(2);
+  el('d-time').textContent=sTs(S.elapsed);
+  el('d-pace').textContent=pStr(ap);
+  el('d-hr').textContent=avgHR||'--';
+  el('d-steps').textContent=S.steps.toLocaleString();
+  el('d-cad').textContent=avgCad||'--';
+  el('d-zones').innerHTML=zt.map((t,i)=>{
+    const pct=Math.round(t/tot*100);
+    return `<div class="zbar-row"><div class="zbar-lbl" style="color:${ZC[i]}">Z${i+1}</div><div class="zbar-bg"><div class="zbar-fill" style="width:${pct}%;background:${ZC[i]};"></div></div><div class="zbar-pct" style="color:${ZC[i]}">${pct}%</div></div>`;
+  }).join('');
+  el('d-export').innerHTML=`
+    <button onclick="dlRunCSV(${rec.id})" style="flex:1;padding:12px;background:rgba(0,255,163,.12);border:1px solid rgba(0,255,163,.3);border-radius:10px;color:var(--green);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ This Run</button>
+    <button onclick="downloadAllCSV()" style="flex:1;padding:12px;background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.25);border-radius:10px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ All Runs</button>
+    <button onclick="downloadCoachLog()" style="flex:1;padding:12px;background:rgba(255,183,0,.1);border:1px solid rgba(255,183,0,.25);border-radius:10px;color:var(--warn);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ Coach Log</button>`;
+  el('d-feed').innerHTML=alerts.slice(0,10).map(a=>`<div class="ai-item t-${a.type}"><div class="ai-icon">${a.icon}</div><div><div class="ai-txt">${a.text}</div><div class="ai-ts">${a.ts}</div></div></div>`).join('');
+  if(!manual) addAlert('good','🏁',`${dist.toFixed(2)}km done in ${sTs(S.elapsed)}. Avg ${pStr(ap)}/km. Saved!`,true);
+  setTimeout(()=>go('s-done'), manual?0:1500);
+}
+
+// ── STORAGE ───────────────────────────────────────────────
+function saveRun(r) {
+  try { const all=getRuns(); all.unshift(r); localStorage.setItem(HIST_KEY,JSON.stringify(all)); }
+  catch(e){ console.warn('Save error',e); }
+}
+function getRuns() {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY)||'[]'); } catch{ return []; }
+}
+function deleteRun(id) {
+  localStorage.setItem(HIST_KEY,JSON.stringify(getRuns().filter(r=>r.id!==id)));
+  renderHistory(); toast('Run deleted');
+}
+
+// ── COACH LOG ────────────────────────────────────────────
+function adviceType(trigger) {
+  if(trigger.includes('milestone'))    return 'milestone';
+  if(trigger.includes('fatigue'))      return 'fatigue-warning';
+  if(trigger.includes('HR spike'))     return 'hr-warning';
+  if(trigger.includes('run start'))    return 'run-start';
+  if(trigger.includes('check-in'))     return 'check-in';
+  return 'check-in';
+}
+
+function logCoachEvent(trigger, aiText) {
+  try {
+    const z = zone(S.hr||0);
+    const tp = CFG.tPace||451;
+    const pDiff = S.pace - tp;
+    const entry = {
+      // Identity
+      runId:        currentRunId,
+      runDate:      new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
+      runTime:      new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+      runType:      CFG.type,
+      weather:      CFG.weather,
+      targetDist:   CFG.dist,
+      targetPace:   CFG.pace,
+      // Trigger
+      trigger:      trigger,
+      adviceType:   adviceType(trigger),
+      // State at moment of coaching
+      elapsedSecs:  S.elapsed,
+      elapsedDisplay: sTs(S.elapsed),
+      distKm:       +(S.dist||0).toFixed(3),
+      paceDisplay:  pStr(S.pace),
+      paceDiffSecs: +pDiff.toFixed(1),
+      hr:           S.hr||0,
+      hrZone:       z,
+      cadence:      S.cadence||0,
+      gct:          S.gct||0,
+      impact:       +(S.impact||0).toFixed(2),
+      // Fatigue breakdown
+      fatigueTotal: +(S.fatigue||0).toFixed(2),
+      fatigueHR:    +(S.hrF||0).toFixed(2),
+      fatigueCad:   +(S.cadF||0).toFixed(2),
+      fatigueGCT:   +(S.gctF||0).toFixed(2),
+      fatigueImp:   +(S.impF||0).toFixed(2),
+      // What the coach said
+      aiResponse:   aiText,
+    };
+    const log = getCoachLog();
+    log.push(entry);
+    localStorage.setItem(LOG_KEY, JSON.stringify(log));
+  } catch(e) { console.warn('Coach log save error', e); }
+}
+
+function getCoachLog() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY)||'[]'); } catch { return []; }
+}
+
+function clearCoachLog() {
+  if(confirm('Clear entire coaching log? This cannot be undone.')) {
+    localStorage.removeItem(LOG_KEY);
+    toast('Coaching log cleared');
+    renderHistory();
+  }
+}
+
+// ── CSV ───────────────────────────────────────────────────
+const CSV_HDR=['Date','Type','Weather','Target km','Target Pace','Actual km','Time',
+  'Avg Pace','Avg HR','Max HR','Avg Cadence','Steps','Max Fatigue','Avg Impact G',
+  'Avg GCT ms','Z1%','Z2%','Z3%','Z4%','Z5%','AI Alerts','Source','Completed'];
+function toRow(r){
+  return [r.dateDisplay,r.type,r.weather,r.targetDist,r.targetPace,r.actualDist,
+    r.elapsedDisplay,r.avgPaceDisplay,r.avgHR,r.maxHR,r.avgCadence,r.totalSteps,
+    r.maxFatigue,r.avgImpact,r.avgGCT,r.z1,r.z2,r.z3,r.z4,r.z5,
+    r.aiAlerts,r.dataSource,r.completed?'Yes':'Stopped early'].map(v=>`"${v}"`).join(',');
+}
+function buildCSV(runs){ return [CSV_HDR.join(','),...runs.map(toRow)].join('\n'); }
+function dlCSV(content,name){
+  const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([content],{type:'text/csv'})),download:name});
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('Downloaded: '+name);
+}
+function dlRunCSV(id){ const r=getRuns().find(r=>r.id===id); if(r) dlCSV(buildCSV([r]),`PaceAI_${r.date.slice(0,10)}_${r.type}.csv`); }
+function downloadAllCSV(){ const r=getRuns(); if(!r.length){toast('No runs saved yet');return;} dlCSV(buildCSV(r),`PaceAI_AllRuns_${new Date().toISOString().slice(0,10)}.csv`); }
+
+// ── COACH LOG CSV EXPORT ─────────────────────────────────
+const LOG_HDR = [
+  'Run Date','Run Time','Run Type','Weather','Target km','Target Pace',
+  'Trigger','Advice Type',
+  'Elapsed','Distance km','Pace','Pace Diff (s/km)',
+  'HR','HR Zone','Cadence spm','GCT ms','Impact G',
+  'Fatigue Total','Fatigue HR','Fatigue Cad','Fatigue GCT','Fatigue Impact',
+  'AI Response'
+];
+function toLogRow(e) {
+  return [
+    e.runDate, e.runTime, e.runType, e.weather, e.targetDist, e.targetPace,
+    e.trigger, e.adviceType,
+    e.elapsedDisplay, e.distKm, e.paceDisplay, e.paceDiffSecs,
+    e.hr, e.hrZone, e.cadence, e.gct, e.impact,
+    e.fatigueTotal, e.fatigueHR, e.fatigueCad, e.fatigueGCT, e.fatigueImp,
+    e.aiResponse
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',');
+}
+function downloadCoachLog() {
+  const log = getCoachLog();
+  if(!log.length){ toast('No coaching events logged yet'); return; }
+  const csv = [LOG_HDR.join(','), ...log.map(toLogRow)].join('\n');
+  dlCSV(csv, `PaceAI_CoachLog_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// ── HISTORY RENDER ────────────────────────────────────────
+function renderHistory() {
+  const list=el('hist-list'), expBtn=el('hist-export');
+  const runs=getRuns();
+  if(!runs.length){
+    if(expBtn) expBtn.style.display='none';
+    list.innerHTML='<div style="text-align:center;padding:50px 20px;color:var(--muted);"><div style="font-size:40px;margin-bottom:12px;">📭</div><div style="font-family:\'Rajdhani\',sans-serif;font-size:14px;letter-spacing:2px;text-transform:uppercase;">No runs saved yet</div></div>';
+    return;
+  }
+  if(expBtn) expBtn.style.display='block';
+  const totalKm=runs.reduce((s,r)=>s+r.actualDist,0).toFixed(1);
+  const logCount=getCoachLog().length;
+  list.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;text-align:center;">
+      <div class="pcstat"><div class="pcsv">${runs.length}</div><div class="pcsu">Runs</div></div>
+      <div class="pcstat"><div class="pcsv">${totalKm}</div><div class="pcsu">km</div></div>
+      <div class="pcstat"><div class="pcsv">${runs.filter(r=>r.completed).length}</div><div class="pcsu">Done</div></div>
+    </div>
+    <div style="background:rgba(0,200,255,.06);border:1px solid rgba(0,200,255,.2);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Coaching Log</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;color:var(--blue);">${logCount} events logged across all runs</div>
+      </div>
+      <div style="display:flex;gap:7px;">
+        <button onclick="downloadCoachLog()" style="padding:8px 12px;background:rgba(0,200,255,.12);border:1px solid rgba(0,200,255,.3);border-radius:8px;color:var(--blue);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ Log CSV</button>
+        <button onclick="clearCoachLog()" style="padding:8px 10px;background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.2);border-radius:8px;color:var(--red);font-size:13px;cursor:pointer;">🗑</button>
+      </div>
+    </div>
+    ${runs.map(r=>`<div class="run-item">
+      <div class="run-date">${r.dateDisplay}</div>
+      <div class="run-title">${r.actualDist}km ${r.type} run</div>
+      <div class="run-stats">
+        <div class="rs-box"><div class="rs-val" style="color:var(--blue);">${r.avgPaceDisplay}</div><div class="rs-lbl">pace</div></div>
+        <div class="rs-box"><div class="rs-val">${r.avgHR}</div><div class="rs-lbl">avg hr</div></div>
+        <div class="rs-box"><div class="rs-val" style="color:var(--green);">${r.avgCadence}</div><div class="rs-lbl">cadence</div></div>
+        <div class="rs-box"><div class="rs-val" style="color:${r.maxFatigue>6?'var(--red)':r.maxFatigue>3?'var(--warn)':'var(--blue)'};">${r.maxFatigue}</div><div class="rs-lbl">fatigue</div></div>
+      </div>
+      <div class="run-btns">
+        <button onclick="dlRunCSV(${r.id})" style="flex:1;padding:8px;background:rgba(0,255,163,.08);border:1px solid rgba(0,255,163,.2);border-radius:7px;color:var(--green);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">⬇ CSV</button>
+        <button onclick="if(confirm('Delete this run?'))deleteRun(${r.id})" style="padding:8px 13px;background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.2);border-radius:7px;color:var(--red);font-size:13px;cursor:pointer;">🗑</button>
+      </div>
+    </div>`).join('')}`;
+}
+
+// ── API KEY ───────────────────────────────────────────────
+function getKey(){ return localStorage.getItem('paceai_key')||''; }
+function refreshKeyStatus(){
+  const k=getKey(), e=el('key-status');
+  if(!e) return;
+  if(k){ e.textContent=`Active: ${k.slice(0,14)}...${k.slice(-4)}`; e.className='status-val s-ok'; }
+  else { e.textContent='No key — AI coach disabled'; e.className='status-val s-err'; }
+}
+function saveKey(){
+  const k=(el('key-input').value||'').trim();
+  if(!k.startsWith('sk-ant-')){ showKeyMsg('Key must start with sk-ant-','var(--red)'); return; }
+  localStorage.setItem('paceai_key',k);
+  refreshKeyStatus(); showKeyMsg('✓ Saved — AI coach ready!','var(--green)');
+  toast('API key saved!');
+}
+function clearKey(){
+  localStorage.removeItem('paceai_key');
+  const i=el('key-input'); if(i) i.value='';
+  refreshKeyStatus(); toast('Key cleared');
+}
+function showKeyMsg(msg,color){
+  const e=el('key-msg'); if(!e) return;
+  e.style.display='block'; e.style.color=color; e.textContent=msg;
+}
+async function testKey(){
+  const k=(el('key-input').value||'').trim()||getKey();
+  if(!k){ showKeyMsg('Enter a key first','var(--warn)'); return; }
+  showKeyMsg('Testing...','var(--blue)');
+  try {
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:20,messages:[{role:'user',content:'Say: Coach ready'}]})
+    });
+    if(r.ok){ const d=await r.json(); showKeyMsg(`✓ Working — "${d.content?.[0]?.text||'OK'}"`, 'var(--green)'); localStorage.setItem('paceai_key',k); refreshKeyStatus(); }
+    else if(r.status===401) showKeyMsg('❌ Invalid key','var(--red)');
+    else showKeyMsg(`❌ Error ${r.status}`,'var(--red)');
+  } catch { showKeyMsg('❌ Network error','var(--red)'); }
+}
+
+// ── INIT ──────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  refreshKeyStatus();
+  if(location.protocol==='file:') {
+    setTimeout(()=>toast('⚠ Open via HTTPS URL for GPS & Wake Lock to work',5000),1000);
+  } else if(!getKey()) {
+    setTimeout(()=>toast('⚙ Tap the gear to add your API key for AI coaching',4000),1500);
+  }
+  // Visibility change — re-acquire wake lock if user returns to app
+  document.addEventListener('visibilitychange', () => {
+    if(!document.hidden && S.phase==='running') acquireWakeLock();
+  });
+});
+</script>
+</body>
+</html>
