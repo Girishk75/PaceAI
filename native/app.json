@@ -4,12 +4,8 @@
     "slug": "paceai",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#03070a",
-    "splash": {
-      "backgroundColor": "#03070a"
-    },
     "android": {
       "package": "com.girishk75.paceai",
       "versionCode": 2,
