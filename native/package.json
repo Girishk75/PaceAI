@@ -21,7 +21,7 @@
     "@expo-google-fonts/rajdhani": "^0.3.0",
     "@expo-google-fonts/share-tech-mono": "^0.3.0",
     "@expo-google-fonts/barlow": "^0.3.0",
-    "react": "18.3.2",
+    "react": "18.3.1",
     "react-native": "0.76.5",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/stack": "^6.4.1",
