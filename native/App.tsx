@@ -16,7 +16,7 @@ import {
 
 import { useRunStore } from './src/store/runStore';
 import { useBLE } from './src/hooks/useBLE';
-import { initBackgroundGPS } from './src/hooks/useGPS';
+import { prewarmGPS } from './src/hooks/useGPS';
 import { initTTS } from './src/services/aiCoach';
 
 import { SetupScreen }   from './src/screens/SetupScreen';
@@ -51,7 +51,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    initBackgroundGPS();  // configure ForegroundService GPS — must run once at startup
+    prewarmGPS();         // request permissions + seed GPS chip at startup
     initTTS();            // warm up TTS engine + enable audio ducking
   }, []);
 

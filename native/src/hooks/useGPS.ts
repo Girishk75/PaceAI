@@ -1,105 +1,101 @@
 import { useEffect, useRef } from 'react';
-import BackgroundGeolocation, {
-  Location,
-  Subscription,
-} from 'react-native-background-geolocation';
+import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 import { PaceSmoother, haversineMetres } from '../algorithms/gps';
 import { useRunStore } from '../store/runStore';
 
+const TASK_NAME      = 'paceai-background-location';
 const ACCURACY_THRESH = 150; // metres — relaxed for Mumbai urban
 
-// Call once at app startup (before any run) to configure the plugin.
-// react-native-background-geolocation creates an Android ForegroundService
-// automatically — this is what keeps GPS alive when screen is locked.
-export async function initBackgroundGPS(): Promise<void> {
-  await BackgroundGeolocation.ready({
-    // Accuracy
-    desiredAccuracy:      BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
-    distanceFilter:       3,      // minimum metres between updates (matches PWA)
-    locationUpdateInterval: 1000, // Android: request update every 1s
+// ─── Background task definition (must be at module level, outside components) ──
+// expo-location's startLocationUpdatesAsync automatically creates an Android
+// ForegroundService with a persistent notification — free, no license needed.
+// This keeps GPS alive when the screen is locked.
+TaskManager.defineTask(TASK_NAME, ({ data, error }: any) => {
+  if (error || !data?.locations?.length) return;
+  const loc: Location.LocationObject = data.locations[data.locations.length - 1];
+  // Forward to store via a module-level ref updated by the hook
+  gpsCallback?.(loc);
+});
 
-    // Background / Foreground Service
-    stopOnTerminate:  false,
-    startOnBoot:      false,
-    foregroundService: true,      // Android: keeps process alive when screen locked
-    notification: {
-      title: 'PaceAI Running',
-      text:  'GPS tracking active',
-      sticky: true,
-    },
+// Module-level callback — updated by the hook so the task can reach the store
+let gpsCallback: ((loc: Location.LocationObject) => void) | null = null;
 
-    // Permissions
-    locationAuthorizationRequest: 'Always',
-
-    // Battery / accuracy tuning
-    pausesLocationUpdatesAutomatically: false,
-    preventSuspend:   true,
-    heartbeatInterval: 60,
-
-    // Debug off for production
-    debug:    false,
-    logLevel: BackgroundGeolocation.LOG_LEVEL_OFF,
-  });
+// ─── One-time permission pre-warm ──────────────────────────────────────────────
+export async function prewarmGPS(): Promise<void> {
+  const { status: fg } = await Location.requestForegroundPermissionsAsync();
+  if (fg !== 'granted') return;
+  await Location.requestBackgroundPermissionsAsync();
+  // Fast initial fix to seed the GPS chip
+  await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+  }).catch(() => {});
 }
 
+// ─── Hook used by LiveRunScreen ────────────────────────────────────────────────
 export function useGPS() {
-  const updateGPS   = useRunStore(s => s.updateGPS);
-  const running     = useRunStore(s => s.running);
+  const updateGPS = useRunStore(s => s.updateGPS);
+  const running   = useRunStore(s => s.running);
 
   const smoother    = useRef(new PaceSmoother());
   const lastPos     = useRef<{ lat: number; lon: number } | null>(null);
   const totalDistM  = useRef(0);
-  const locSub      = useRef<Subscription | null>(null);
 
   useEffect(() => {
     if (!running) {
-      BackgroundGeolocation.stop();
-      locSub.current?.remove();
-      locSub.current = null;
+      // Stop background task and clear callback
+      Location.stopLocationUpdatesAsync(TASK_NAME).catch(() => {});
+      gpsCallback = null;
       return;
     }
 
-    // Reset per-run state
     smoother.current.reset();
-    lastPos.current   = null;
+    lastPos.current    = null;
     totalDistM.current = 0;
 
-    // Subscribe to location updates
-    locSub.current = BackgroundGeolocation.onLocation(
-      (loc: Location) => {
-        const { latitude: lat, longitude: lon, accuracy } = loc.coords;
-        if ((accuracy ?? 999) > ACCURACY_THRESH) return;
+    // Wire the module-level callback to this run's store/smoother state
+    gpsCallback = (loc: Location.LocationObject) => {
+      const { latitude: lat, longitude: lon, accuracy } = loc.coords;
+      if ((accuracy ?? 999) > ACCURACY_THRESH) return;
 
-        const t = new Date(loc.timestamp).getTime();
+      const t = loc.timestamp;
 
-        // Accumulate haversine distance
-        if (lastPos.current) {
-          const d = haversineMetres(lastPos.current.lat, lastPos.current.lon, lat, lon);
-          if (d >= 3) {
-            totalDistM.current += d;
-            lastPos.current = { lat, lon };
-          }
-        } else {
+      if (lastPos.current) {
+        const d = haversineMetres(lastPos.current.lat, lastPos.current.lon, lat, lon);
+        if (d >= 3) {
+          totalDistM.current += d;
           lastPos.current = { lat, lon };
         }
+      } else {
+        lastPos.current = { lat, lon };
+      }
 
-        // Smooth pace via sliding 5-position window
-        const pace = smoother.current.update(lat, lon, t);
-        if (pace) {
-          updateGPS(pace, totalDistM.current / 1000, accuracy ?? 999);
-        }
-      },
-      (error) => {
-        console.warn('GPS error:', error);
-      },
-    );
+      const pace = smoother.current.update(lat, lon, t);
+      if (pace) {
+        updateGPS(pace, totalDistM.current / 1000, accuracy ?? 999);
+      }
+    };
 
-    BackgroundGeolocation.start();
+    // Start background location with ForegroundService notification.
+    // Android shows a persistent notification ("PaceAI — GPS tracking active")
+    // — this is what keeps the process alive when screen locks.
+    Location.startLocationUpdatesAsync(TASK_NAME, {
+      accuracy:            Location.Accuracy.BestForNavigation,
+      timeInterval:        1000,   // request update every 1s
+      distanceInterval:    1,      // also trigger on any movement ≥ 1m
+      foregroundService: {
+        notificationTitle: 'PaceAI Running',
+        notificationBody:  'GPS tracking active — screen can be locked',
+        notificationColor: '#00ffa3',
+      },
+      activityType:                        Location.ActivityType.Fitness,
+      pausesUpdatesAutomatically:          false,
+      showsBackgroundLocationIndicator:    true,
+    }).catch(err => console.warn('GPS start error:', err));
 
     return () => {
-      locSub.current?.remove();
-      locSub.current = null;
-      BackgroundGeolocation.stop();
+      Location.stopLocationUpdatesAsync(TASK_NAME).catch(() => {});
+      gpsCallback = null;
     };
   }, [running, updateGPS]);
 }
