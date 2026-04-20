@@ -4,7 +4,7 @@ import { calcFatigue } from '../algorithms/fatigue';
 import { formatTime } from '../algorithms/gps';
 import { getHRZone, simHR } from '../algorithms/hrZone';
 
-export type Screen = 'setup' | 'live' | 'shield' | 'paused' | 'done' | 'history' | 'settings';
+export type Screen = 'setup' | 'live' | 'paused' | 'done' | 'history' | 'settings';
 
 export interface RunConfig {
   runType:    RunType;

@@ -46,12 +46,6 @@ export function LiveRunScreen() {
     return unsub;
   }, []);
 
-  // Auto-shield after 3s
-  useEffect(() => {
-    const t = setTimeout(() => setScreen('shield'), 3000);
-    return () => clearTimeout(t);
-  }, [setScreen]);
-
   // Wake lock + immersive
   useEffect(() => {
     KeepAwake.activateKeepAwakeAsync();
@@ -120,9 +114,6 @@ export function LiveRunScreen() {
 
         <Text style={st.pageLabel}>{PAGE_LABELS[activePage]}</Text>
 
-        <TouchableOpacity onPress={() => setScreen('shield')} style={st.iconBtn}>
-          <Text style={st.iconTxt}>🔒</Text>
-        </TouchableOpacity>
         <TouchableOpacity onPress={() => { if (!s.coachMuted) stopSpeech(); setMuted(!s.coachMuted); }} style={st.iconBtn}>
           <Text style={st.iconTxt}>{s.coachMuted ? '🔇' : '🔊'}</Text>
         </TouchableOpacity>

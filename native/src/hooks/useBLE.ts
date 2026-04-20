@@ -88,10 +88,13 @@ export function useBLE() {
       if (name === FOOT_POD_NAME && !fpDevice.current) {
         connectFootPod(device);
       }
-      // Garmin HR: no fixed name, identify by service UUID
+      // HR device: match by standard BLE HR service UUID (in advertisement)
+      // OR by Garmin device name (Garmin often omits service UUIDs from advertisement)
       if (!hrDevice.current) {
         const uuids = device.serviceUUIDs ?? [];
-        if (uuids.some(u => u.toLowerCase().includes('180d'))) {
+        const hasHrService = uuids.some(u => u.toLowerCase().includes('180d'));
+        const isGarmin = /garmin|forerunner|fenix|vivoactive|venu/i.test(name);
+        if (hasHrService || isGarmin) {
           connectHR(device);
         }
       }
