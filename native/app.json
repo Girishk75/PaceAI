@@ -28,11 +28,16 @@
     },
     "plugins": [
       [
-        "expo-location",
+        "react-native-background-geolocation",
         {
-          "locationAlwaysAndWhenInUsePermission": "PaceAI needs location to track your run distance and pace.",
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
+          "license": "YOUR_LICENSE_KEY_HERE",
+          "locationAuthorizationRequest": "Always",
+          "backgroundPermissionRationale": {
+            "title": "Allow PaceAI to track location in background?",
+            "message": "PaceAI needs background location to track your run distance and pace when the screen is locked.",
+            "positiveAction": "Allow",
+            "negativeAction": "Cancel"
+          }
         }
       ],
       "react-native-ble-plx"

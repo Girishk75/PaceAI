@@ -1,4 +1,4 @@
-import * as Speech from 'expo-speech';
+import Tts from 'react-native-tts';
 import { loadSettings, appendCoachEvent, CoachEvent } from './storage';
 import { formatPace, formatTime } from '../algorithms/gps';
 import { RUNNER } from '../constants/runner';
@@ -143,18 +143,47 @@ export async function fireCoach(trigger: string, s: RunState): Promise<string | 
   }
 }
 
+// Initialise TTS engine once at app start.
+// Audio ducking: Android's AudioManager requests AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+// which tells Spotify / music apps to lower volume while coaching plays,
+// then restore automatically when TTS finishes.
+export function initTTS(): void {
+  Tts.getInitStatus().then(() => {
+    Tts.setDefaultRate(0.85);   // slightly below normal — clear for outdoor use
+    Tts.setDefaultPitch(1.0);
+    Tts.setDucking(true);       // enables audio ducking on Android
+  }).catch(() => {
+    // TTS engine not available — coaching will silently skip
+  });
+}
+
 export function speak(text: string, onDone?: () => void): void {
-  Speech.stop();
-  Speech.speak(text, {
-    rate:     0.92,
-    pitch:    1.0,
-    volume:   1.0,
-    onDone,
-    onStopped: onDone,
-    onError:   onDone,
+  Tts.stop();
+
+  if (onDone) {
+    const finishSub = Tts.addEventListener('tts-finish', () => {
+      finishSub.remove();
+      errSub.remove();
+      onDone();
+    });
+    const errSub = Tts.addEventListener('tts-error', () => {
+      finishSub.remove();
+      errSub.remove();
+      onDone();
+    });
+  }
+
+  // STREAM_MUSIC routes audio through the music stream so ducking applies
+  // to whatever is playing (Spotify, YouTube Music, etc.)
+  Tts.speak(text, {
+    androidParams: {
+      KEY_PARAM_STREAM:  'STREAM_MUSIC',
+      KEY_PARAM_VOLUME:  1.0,
+      KEY_PARAM_PAN:     0,
+    },
   });
 }
 
 export function stopSpeech(): void {
-  Speech.stop();
+  Tts.stop();
 }

@@ -1,86 +1,105 @@
 import { useEffect, useRef } from 'react';
-import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
+import BackgroundGeolocation, {
+  Location,
+  Subscription,
+} from 'react-native-background-geolocation';
 import { PaceSmoother, haversineMetres } from '../algorithms/gps';
 import { useRunStore } from '../store/runStore';
 
-const BACKGROUND_TASK = 'paceai-location';
 const ACCURACY_THRESH = 150; // metres — relaxed for Mumbai urban
 
-// Pre-warm: get a fast initial fix
-export async function prewarmGPS(): Promise<void> {
-  await Location.requestForegroundPermissionsAsync();
-  await Location.requestBackgroundPermissionsAsync();
-  await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+// Call once at app startup (before any run) to configure the plugin.
+// react-native-background-geolocation creates an Android ForegroundService
+// automatically — this is what keeps GPS alive when screen is locked.
+export async function initBackgroundGPS(): Promise<void> {
+  await BackgroundGeolocation.ready({
+    // Accuracy
+    desiredAccuracy:      BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
+    distanceFilter:       3,      // minimum metres between updates (matches PWA)
+    locationUpdateInterval: 1000, // Android: request update every 1s
+
+    // Background / Foreground Service
+    stopOnTerminate:  false,
+    startOnBoot:      false,
+    foregroundService: true,      // Android: keeps process alive when screen locked
+    notification: {
+      title: 'PaceAI Running',
+      text:  'GPS tracking active',
+      sticky: true,
+    },
+
+    // Permissions
+    locationAuthorizationRequest: 'Always',
+
+    // Battery / accuracy tuning
+    pausesLocationUpdatesAutomatically: false,
+    preventSuspend:   true,
+    heartbeatInterval: 60,
+
+    // Debug off for production
+    debug:    false,
+    logLevel: BackgroundGeolocation.LOG_LEVEL_OFF,
+  });
 }
 
-// Register background location task (must be called at module level)
-TaskManager.defineTask(BACKGROUND_TASK, ({ data, error }: any) => {
-  if (error || !data?.locations?.length) return;
-  // Background location updates are handled via the same store reference
-  // We emit a custom event that the foreground hook picks up
-});
-
 export function useGPS() {
-  const updateGPS = useRunStore(s => s.updateGPS);
-  const running   = useRunStore(s => s.running);
+  const updateGPS   = useRunStore(s => s.updateGPS);
+  const running     = useRunStore(s => s.running);
 
-  const smoother   = useRef(new PaceSmoother());
-  const lastPos    = useRef<{ lat: number; lon: number } | null>(null);
-  const totalDistM = useRef(0);
-  const watcher    = useRef<Location.LocationSubscription | null>(null);
+  const smoother    = useRef(new PaceSmoother());
+  const lastPos     = useRef<{ lat: number; lon: number } | null>(null);
+  const totalDistM  = useRef(0);
+  const locSub      = useRef<Subscription | null>(null);
 
   useEffect(() => {
     if (!running) {
-      watcher.current?.remove();
-      watcher.current = null;
+      BackgroundGeolocation.stop();
+      locSub.current?.remove();
+      locSub.current = null;
       return;
     }
 
+    // Reset per-run state
     smoother.current.reset();
-    lastPos.current    = null;
+    lastPos.current   = null;
     totalDistM.current = 0;
 
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
+    // Subscribe to location updates
+    locSub.current = BackgroundGeolocation.onLocation(
+      (loc: Location) => {
+        const { latitude: lat, longitude: lon, accuracy } = loc.coords;
+        if ((accuracy ?? 999) > ACCURACY_THRESH) return;
 
-      watcher.current = await Location.watchPositionAsync(
-        {
-          accuracy:           Location.Accuracy.BestForNavigation,
-          timeInterval:       1000,
-          distanceInterval:   1,
-        },
-        (loc) => {
-          const { latitude: lat, longitude: lon, accuracy, speed } = loc.coords;
-          if ((accuracy ?? 999) > ACCURACY_THRESH) return;
+        const t = new Date(loc.timestamp).getTime();
 
-          const t = loc.timestamp;
-
-          // Accumulate distance
-          if (lastPos.current) {
-            const d = haversineMetres(lastPos.current.lat, lastPos.current.lon, lat, lon);
-            if (d >= 3) {
-              totalDistM.current += d;
-              lastPos.current = { lat, lon };
-            }
-          } else {
+        // Accumulate haversine distance
+        if (lastPos.current) {
+          const d = haversineMetres(lastPos.current.lat, lastPos.current.lon, lat, lon);
+          if (d >= 3) {
+            totalDistM.current += d;
             lastPos.current = { lat, lon };
           }
+        } else {
+          lastPos.current = { lat, lon };
+        }
 
-          // Smooth pace via sliding window
-          const pace = smoother.current.update(lat, lon, t);
+        // Smooth pace via sliding 5-position window
+        const pace = smoother.current.update(lat, lon, t);
+        if (pace) {
+          updateGPS(pace, totalDistM.current / 1000, accuracy ?? 999);
+        }
+      },
+      (error) => {
+        console.warn('GPS error:', error);
+      },
+    );
 
-          if (pace) {
-            updateGPS(pace, totalDistM.current / 1000, accuracy ?? 999);
-          }
-        },
-      );
-    })();
+    BackgroundGeolocation.start();
 
     return () => {
-      watcher.current?.remove();
-      watcher.current = null;
+      locSub.current?.remove();
+      locSub.current = null;
+      BackgroundGeolocation.stop();
     };
   }, [running, updateGPS]);
 }

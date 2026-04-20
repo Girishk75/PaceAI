@@ -16,6 +16,8 @@ import {
 
 import { useRunStore } from './src/store/runStore';
 import { useBLE } from './src/hooks/useBLE';
+import { initBackgroundGPS } from './src/hooks/useGPS';
+import { initTTS } from './src/services/aiCoach';
 
 import { SetupScreen }   from './src/screens/SetupScreen';
 import { LiveRunScreen } from './src/screens/LiveRunScreen';
@@ -47,6 +49,11 @@ export default function App() {
     Barlow_400Regular,
     Barlow_500Medium,
   });
+
+  useEffect(() => {
+    initBackgroundGPS();  // configure ForegroundService GPS — must run once at startup
+    initTTS();            // warm up TTS engine + enable audio ducking
+  }, []);
 
   if (!fontsLoaded) return null;
 
