@@ -4,12 +4,8 @@
     "slug": "paceai",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#03070a",
-    "splash": {
-      "backgroundColor": "#03070a"
-    },
     "android": {
       "package": "com.girishk75.paceai",
       "versionCode": 2,
@@ -35,7 +31,20 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
-      "react-native-ble-plx"
-    ]
+      "react-native-ble-plx",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "19b81731-79c7-4acd-a788-b1efce102e40"
+      }
+    }
   }
 }
