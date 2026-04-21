@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { version as APP_VERSION } from '../../package.json';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Alert, ScrollView, ActivityIndicator,
@@ -214,7 +215,7 @@ export function SettingsScreen() {
 
         <View style={st.about}>
           <Text style={st.sectionLabel}>ABOUT</Text>
-          <Text style={st.aboutTxt}>PaceAI v2.0 Native</Text>
+          <Text style={st.aboutTxt}>PaceAI v{APP_VERSION}</Text>
           <Text style={st.aboutTxt}>ESP32 foot pod · Garmin HR · Claude AI</Text>
           <Text style={st.aboutTxt}>Built for Mumbai running by Girish</Text>
         </View>
