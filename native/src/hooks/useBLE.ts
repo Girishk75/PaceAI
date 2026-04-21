@@ -1,20 +1,29 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { BleManager, Device, State } from 'react-native-ble-plx';
+import { Device, State } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
 import { FOOT_POD_NAME, FOOT_POD_SERVICE, FOOT_POD_CHAR, HR_SERVICE, HR_MEASUREMENT_CHAR } from '../constants/ble';
 import { useRunStore } from '../store/runStore';
-
-const manager = new BleManager();
+import { bleManager } from '../services/bleManager';
+import { loadSettings } from '../services/storage';
 
 export function useBLE() {
   const fpDevice   = useRef<Device | null>(null);
   const hrDevice   = useRef<Device | null>(null);
   const scanning   = useRef(false);
+  const savedFpId  = useRef('');
+  const savedHrId  = useRef('');
 
   const updateFootPod  = useRunStore(s => s.updateFootPod);
   const updateHR       = useRunStore(s => s.updateHR);
   const setFpConnected = useRunStore(s => s.setFpConnected);
   const setHrConnected = useRunStore(s => s.setHrConnected);
+
+  useEffect(() => {
+    loadSettings().then(s => {
+      savedFpId.current = s.fpDeviceId;
+      savedHrId.current = s.hrDeviceId;
+    });
+  }, []);
 
   const connectFootPod = useCallback(async (device: Device) => {
     try {
@@ -30,18 +39,19 @@ export function useBLE() {
           if (err || !char?.value) return;
           const csv = Buffer.from(char.value, 'base64').toString('utf8');
           const [cadStr, impStr, gctStr, stepsStr] = csv.split(',');
-          const cad   = parseFloat(cadStr)   || 0;
-          const imp   = parseFloat(impStr)   || 0;
-          const gct   = parseFloat(gctStr)   || 0;
-          const steps = parseInt(stepsStr, 10) || 0;
-          updateFootPod(cad, imp, gct, steps);
+          updateFootPod(
+            parseFloat(cadStr)    || 0,
+            parseFloat(impStr)    || 0,
+            parseFloat(gctStr)    || 0,
+            parseInt(stepsStr, 10) || 0,
+          );
         },
       );
 
       connected.onDisconnected(() => {
         fpDevice.current = null;
         setFpConnected(false);
-        startScan(); // auto-reconnect
+        startScan();
       });
     } catch {
       setFpConnected(false);
@@ -61,7 +71,6 @@ export function useBLE() {
         (err, char) => {
           if (err || !char?.value) return;
           const bytes = Buffer.from(char.value, 'base64');
-          // Byte 0: flags. Bit 0 = 0 → HR is uint8 at byte 1
           const hr = (bytes[0] & 0x01) ? (bytes[2] << 8 | bytes[1]) : bytes[1];
           if (hr > 30 && hr < 230) updateHR(hr);
         },
@@ -81,32 +90,31 @@ export function useBLE() {
     if (scanning.current) return;
     scanning.current = true;
 
-    manager.startDeviceScan(null, { allowDuplicates: false }, (err, device) => {
+    bleManager.startDeviceScan(null, { allowDuplicates: false }, (err, device) => {
       if (err || !device) return;
-
+      const id   = device.id;
       const name = device.name ?? '';
-      if (name === FOOT_POD_NAME && !fpDevice.current) {
-        connectFootPod(device);
-      }
-      // Garmin HR: no fixed name, identify by service UUID
-      if (!hrDevice.current) {
-        const uuids = device.serviceUUIDs ?? [];
-        if (uuids.some(u => u.toLowerCase().includes('180d'))) {
-          connectHR(device);
-        }
+
+      // Foot pod: match by saved device ID, fall back to default name
+      if (!fpDevice.current) {
+        const match = savedFpId.current ? id === savedFpId.current : name === FOOT_POD_NAME;
+        if (match) connectFootPod(device);
       }
 
-      // Stop scan once both found
+      // HR monitor: match by saved device ID only
+      if (!hrDevice.current && savedHrId.current && id === savedHrId.current) {
+        connectHR(device);
+      }
+
       if (fpDevice.current && hrDevice.current) {
-        manager.stopDeviceScan();
+        bleManager.stopDeviceScan();
         scanning.current = false;
       }
     });
 
-    // Restart scan every 30s if still looking
     setTimeout(() => {
       if (scanning.current) {
-        manager.stopDeviceScan();
+        bleManager.stopDeviceScan();
         scanning.current = false;
         startScan();
       }
@@ -114,7 +122,7 @@ export function useBLE() {
   }, [connectFootPod, connectHR]);
 
   useEffect(() => {
-    const sub = manager.onStateChange((state) => {
+    const sub = bleManager.onStateChange((state) => {
       if (state === State.PoweredOn) {
         startScan();
         sub.remove();
@@ -122,7 +130,7 @@ export function useBLE() {
     }, true);
 
     return () => {
-      manager.stopDeviceScan();
+      bleManager.stopDeviceScan();
       scanning.current = false;
     };
   }, [startScan]);

@@ -86,12 +86,20 @@ export async function loadCoachLog(): Promise<CoachEvent[]> {
 // ── Settings ───────────────────────────────────────────────────────────────
 
 export interface Settings {
-  apiKey: string;
+  apiKey:       string;
+  hrDeviceId:   string;
+  hrDeviceName: string;
+  fpDeviceId:   string;
+  fpDeviceName: string;
 }
+
+const SETTINGS_DEFAULTS: Settings = {
+  apiKey: '', hrDeviceId: '', hrDeviceName: '', fpDeviceId: '', fpDeviceName: '',
+};
 
 export async function loadSettings(): Promise<Settings> {
   const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-  return raw ? JSON.parse(raw) : { apiKey: '' };
+  return raw ? { ...SETTINGS_DEFAULTS, ...JSON.parse(raw) } : { ...SETTINGS_DEFAULTS };
 }
 
 export async function saveSettings(s: Settings): Promise<void> {

@@ -21,7 +21,6 @@ import { initTTS } from './src/services/aiCoach';
 
 import { SetupScreen }   from './src/screens/SetupScreen';
 import { LiveRunScreen } from './src/screens/LiveRunScreen';
-import { RunShieldScreen}from './src/screens/RunShieldScreen';
 import { PausedScreen }  from './src/screens/PausedScreen';
 import { DoneScreen }    from './src/screens/DoneScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
@@ -33,7 +32,6 @@ function Navigator() {
 
   switch (screen) {
     case 'live':     return <LiveRunScreen />;
-    case 'shield':   return <RunShieldScreen />;
     case 'paused':   return <PausedScreen />;
     case 'done':     return <DoneScreen />;
     case 'history':  return <HistoryScreen />;
