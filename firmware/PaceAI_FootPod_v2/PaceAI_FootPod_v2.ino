@@ -1,5 +1,5 @@
 /*
- * PaceAI Foot Pod — Firmware v2.0
+ * PaceAI Foot Pod — Firmware v2.1
  * Hardware : ESP32 DevKit + MPU6050  (ankle mount, under sock)
  * Output   : BLE GATT notify — "cadence,impact,gct,steps" every 1 s
  *
@@ -13,10 +13,12 @@
  *                  Fix: gyro-only offset calibration + magnitude-based detection.
  *                  sqrt(ax²+ay²+az²) == 1G at rest regardless of sensor orientation.
  *
- * GCT = 410 ms     Safety timeout fired on every footstrike because threshold-based
- *                  exit never triggered reliably at ankle.
- *                  Fix: two-stage gyroscope GCT — wait for gyro to settle (stance),
- *                  then detect toe-off from gyro rise (terminal contact).
+ * GCT = 600 ms     v2.0 gyro toe-off detection (GYRO_LIFTOFF = 120 °/s) always
+ *                  timed out at MAX_GCT_MS because ankle angular velocity during
+ *                  toe-off does not reliably exceed 120 °/s.
+ *                  Fix (v2.1): measure GCT as impact duration — time from crossing
+ *                  impactThresh (initial contact) to dropping below exitThresh
+ *                  (end of loading). Simpler and ankle-mount reliable.
  *
  * ±2G CLIPPING     Running peaks measured at 3.08G — beyond the 2G range.
  *                  Fix: ±8G range (4096 LSB/G).
@@ -66,11 +68,9 @@
 #define MIN_IMPACT_G  2.0f    // hard floor for dynamic threshold
                               // (benchmark still floor = 1.48G, running = 2.61G)
 
-// ── GCT (gyroscope-based) ───────────────────────────────────────────────────
-#define GYRO_SETTLE   50.0f   // °/s — below this confirms foot is on ground
-#define GYRO_LIFTOFF  120.0f  // °/s — above this signals toe-off
+// ── GCT (impact-duration-based) ─────────────────────────────────────────────
 #define MIN_GCT_MS    80      // shortest plausible contact time
-#define MAX_GCT_MS    600     // hard cap (replaces the 400ms timeout in v1.1)
+#define MAX_GCT_MS    600     // hard cap
 
 // ── Cadence ─────────────────────────────────────────────────────────────────
 #define CAD_BUF       6       // rolling window: last 6 same-foot intervals
@@ -98,11 +98,9 @@ static uint32_t lastStepMs  = 0;
 static uint32_t totalSteps  = 0;
 static float    lastImpact  = 0;
 
-// ── GCT state machine ───────────────────────────────────────────────────────
-enum GCTPhase { GCT_IDLE, GCT_SETTLING, GCT_STANCE };
-static GCTPhase gctPhase  = GCT_IDLE;
-static uint32_t gctStart  = 0;
-static float    lastGCT   = 0;
+// ── GCT ─────────────────────────────────────────────────────────────────────
+static uint32_t strikeStart = 0;  // ms — when current impact began
+static float    lastGCT     = 0;
 
 // ── Cadence ─────────────────────────────────────────────────────────────────
 static uint32_t cadBuf[CAD_BUF] = {0};
@@ -193,7 +191,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
 // ═══════════════════════════════════════════════════════════════════════════
 
 static void calibrate() {
-  Serial.println("PaceAI v2.0 — hold pod still for 10 seconds...");
+  Serial.println("PaceAI v2.1 — hold pod still for 10 seconds...");
 
   double sumGx = 0, sumGy = 0, sumGz = 0;
   double sumMag = 0, sumMagSq = 0;
@@ -265,31 +263,32 @@ static void calibrate() {
 //  processSample — called at 100 Hz
 //
 //  Strike detection  : magnitude threshold with hysteresis
-//  GCT               : two-stage gyro state machine
-//                        GCT_SETTLING → wait for gyro to drop  (foot landing)
-//                        GCT_STANCE   → wait for gyro to rise  (toe-off)
+//  GCT               : time from crossing impactThresh to dropping below exitThresh
 //  Cadence           : rolling mean of last CAD_BUF same-foot intervals
 // ═══════════════════════════════════════════════════════════════════════════
 
 static void processSample(const Imu &s) {
   uint32_t now = millis();
 
-  // — Strike / step detection ————————————————————————————————————————————
+  // — Strike / step detection + GCT ————————————————————————————————————————
   if (!inStrike) {
     if (s.aMag >= impactThresh && (now - lastStepMs) >= (uint32_t)MIN_STEP_MS) {
-      inStrike = true;
-      peakG    = s.aMag;
-
-      // Initial Contact — start GCT timer
-      gctPhase = GCT_SETTLING;
-      gctStart = now;
+      inStrike    = true;
+      peakG       = s.aMag;
+      strikeStart = now;  // GCT begins at initial contact
     }
   } else {
     // Track peak while above exit threshold
     if (s.aMag > peakG) peakG = s.aMag;
 
     if (s.aMag < exitThresh) {
-      // Strike ended: register step
+      // Strike ended: compute GCT as impact duration
+      uint32_t dur = now - strikeStart;
+      if (dur >= (uint32_t)MIN_GCT_MS) {
+        lastGCT = (float)fminf((float)dur, (float)MAX_GCT_MS);
+      }
+
+      // Register step
       inStrike   = false;
       lastImpact = peakG;
       totalSteps++;
@@ -311,36 +310,6 @@ static void processSample(const Imu &s) {
       }
       lastStepMs = now;
     }
-  }
-
-  // — GCT state machine ——————————————————————————————————————————————————
-  switch (gctPhase) {
-    case GCT_IDLE:
-      break;
-
-    case GCT_SETTLING:
-      // Foot is still rotating/vibrating after impact — wait for it to settle
-      if (s.gMag < GYRO_SETTLE) {
-        gctPhase = GCT_STANCE;       // foot confirmed on ground
-      } else if (now - gctStart > (uint32_t)MAX_GCT_MS) {
-        gctPhase = GCT_IDLE;         // timed out — discard this GCT
-      }
-      break;
-
-    case GCT_STANCE:
-      // Foot on ground — wait for gyro to rise above liftoff threshold (toe-off)
-      if (s.gMag > GYRO_LIFTOFF) {
-        uint32_t dur = now - gctStart;
-        if (dur >= (uint32_t)MIN_GCT_MS) {
-          lastGCT = (float)fminf((float)dur, (float)MAX_GCT_MS);
-        }
-        gctPhase = GCT_IDLE;
-      } else if (now - gctStart > (uint32_t)MAX_GCT_MS) {
-        // Foot contact too long — cap and move on
-        lastGCT  = (float)MAX_GCT_MS;
-        gctPhase = GCT_IDLE;
-      }
-      break;
   }
 }
 
@@ -409,9 +378,9 @@ void setup() {
   lastSampleMs = millis();
   lastBleMs    = millis();
 
-  Serial.println("PaceAI FootPod v2.0 — advertising");
-  Serial.printf("Impact threshold: %.3f G  |  GCT settle/liftoff: %.0f / %.0f deg/s\n",
-                impactThresh, GYRO_SETTLE, GYRO_LIFTOFF);
+  Serial.println("PaceAI FootPod v2.1 — advertising");
+  Serial.printf("Impact threshold: %.3f G  (exit: %.3f G)  |  GCT: impact-duration\n",
+                impactThresh, exitThresh);
 }
 
 void loop() {
