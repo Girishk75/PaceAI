@@ -6,6 +6,10 @@ import { useRunStore } from '../store/runStore';
 import { bleManager } from '../services/bleManager';
 import { loadSettings } from '../services/storage';
 
+function bleLog(appendLog: (l: string) => void, line: string) {
+  appendLog(`[BLE] ${line}`);
+}
+
 export function useBLE() {
   const fpDevice   = useRef<Device | null>(null);
   const hrDevice   = useRef<Device | null>(null);
@@ -17,6 +21,7 @@ export function useBLE() {
   const updateHR       = useRunStore(s => s.updateHR);
   const setFpConnected = useRunStore(s => s.setFpConnected);
   const setHrConnected = useRunStore(s => s.setHrConnected);
+  const appendLog      = useRunStore(s => s.appendLog);
 
   useEffect(() => {
     loadSettings().then(s => {
@@ -26,17 +31,20 @@ export function useBLE() {
   }, []);
 
   const connectFootPod = useCallback(async (device: Device) => {
+    bleLog(appendLog, `FP connecting — ${device.name ?? device.id}`);
     try {
       const connected = await device.connect();
       await connected.discoverAllServicesAndCharacteristics();
       fpDevice.current = connected;
       setFpConnected(true);
+      bleLog(appendLog, `FP connected — ${device.name ?? device.id}`);
 
       connected.monitorCharacteristicForService(
         FOOT_POD_SERVICE,
         FOOT_POD_CHAR,
         (err, char) => {
-          if (err || !char?.value) return;
+          if (err) { bleLog(appendLog, `FP monitor error: ${err.message}`); return; }
+          if (!char?.value) return;
           const csv = Buffer.from(char.value, 'base64').toString('utf8');
           const [cadStr, impStr, gctStr, stepsStr] = csv.split(',');
           updateFootPod(
@@ -49,27 +57,33 @@ export function useBLE() {
       );
 
       connected.onDisconnected(() => {
+        bleLog(appendLog, `FP disconnected — retrying in 1s`);
         fpDevice.current = null;
         setFpConnected(false);
-        startScan();
+        scanning.current = false;  // clear before retry so startScan isn't blocked
+        setTimeout(startScan, 1000);
       });
-    } catch {
+    } catch (e: any) {
+      bleLog(appendLog, `FP connect failed: ${e?.message ?? e}`);
       setFpConnected(false);
     }
-  }, [updateFootPod, setFpConnected]);
+  }, [updateFootPod, setFpConnected, appendLog]);
 
   const connectHR = useCallback(async (device: Device) => {
+    bleLog(appendLog, `HR connecting — ${device.name ?? device.id}`);
     try {
       const connected = await device.connect();
       await connected.discoverAllServicesAndCharacteristics();
       hrDevice.current = connected;
       setHrConnected(true);
+      bleLog(appendLog, `HR connected — ${device.name ?? device.id}`);
 
       connected.monitorCharacteristicForService(
         HR_SERVICE,
         HR_MEASUREMENT_CHAR,
         (err, char) => {
-          if (err || !char?.value) return;
+          if (err) { bleLog(appendLog, `HR monitor error: ${err.message}`); return; }
+          if (!char?.value) return;
           const bytes = Buffer.from(char.value, 'base64');
           const hr = (bytes[0] & 0x01) ? (bytes[2] << 8 | bytes[1]) : bytes[1];
           if (hr > 30 && hr < 230) updateHR(hr);
@@ -77,21 +91,26 @@ export function useBLE() {
       );
 
       connected.onDisconnected(() => {
+        bleLog(appendLog, `HR disconnected — retrying in 1s`);
         hrDevice.current = null;
         setHrConnected(false);
-        startScan();
+        scanning.current = false;  // clear before retry so startScan isn't blocked
+        setTimeout(startScan, 1000);
       });
-    } catch {
+    } catch (e: any) {
+      bleLog(appendLog, `HR connect failed: ${e?.message ?? e}`);
       setHrConnected(false);
     }
-  }, [updateHR, setHrConnected]);
+  }, [updateHR, setHrConnected, appendLog]);
 
   const startScan = useCallback(() => {
     if (scanning.current) return;
     scanning.current = true;
+    bleLog(appendLog, `scan started`);
 
     bleManager.startDeviceScan(null, { allowDuplicates: false }, (err, device) => {
-      if (err || !device) return;
+      if (err) { bleLog(appendLog, `scan error: ${err.message}`); return; }
+      if (!device) return;
       const id   = device.id;
       const name = device.name ?? '';
 
@@ -107,6 +126,7 @@ export function useBLE() {
       }
 
       if (fpDevice.current && hrDevice.current) {
+        bleLog(appendLog, `both devices found — scan stopped`);
         bleManager.stopDeviceScan();
         scanning.current = false;
       }
@@ -114,12 +134,13 @@ export function useBLE() {
 
     setTimeout(() => {
       if (scanning.current) {
+        bleLog(appendLog, `scan timeout — restarting`);
         bleManager.stopDeviceScan();
         scanning.current = false;
         startScan();
       }
     }, 30000);
-  }, [connectFootPod, connectHR]);
+  }, [connectFootPod, connectHR, appendLog]);
 
   useEffect(() => {
     const sub = bleManager.onStateChange((state) => {

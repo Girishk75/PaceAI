@@ -91,10 +91,12 @@ export interface Settings {
   hrDeviceName: string;
   fpDeviceId:   string;
   fpDeviceName: string;
+  debugMode:    boolean;
 }
 
 const SETTINGS_DEFAULTS: Settings = {
   apiKey: '', hrDeviceId: '', hrDeviceName: '', fpDeviceId: '', fpDeviceName: '',
+  debugMode: false,
 };
 
 export async function loadSettings(): Promise<Settings> {

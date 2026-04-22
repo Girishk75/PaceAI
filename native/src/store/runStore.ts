@@ -38,18 +38,24 @@ export interface RunState {
   displayPace:   number;  // what to show (real or sim)
 
   // HR
-  hr:          number;
-  hrZone:      number;
-  hrConnected: boolean;
+  hr:             number;
+  hrZone:         number;
+  hrConnected:    boolean;
+  lastHrPacketTs: number;  // ms — wall clock of last BLE HR packet
 
   // Foot pod
-  cadence:       number;  // both feet (raw × 2)
-  steps:         number;  // per run (offset corrected)
-  impact:        number;  // G
-  gct:           number;  // ms
-  fpConnected:   boolean;
-  fpRawSteps:    number;  // cumulative from ESP32
-  fpStepsOffset: number;
+  cadence:        number;  // both feet (raw × 2)
+  steps:          number;  // per run (offset corrected)
+  impact:         number;  // G
+  gct:            number;  // ms
+  fpConnected:    boolean;
+  fpRawSteps:     number;  // cumulative from ESP32
+  fpStepsOffset:  number;
+  lastFpPacketTs: number;  // ms — wall clock of last BLE foot pod packet
+
+  // Debug
+  debugMode: boolean;
+  debugLog:  string[];  // rolling 200-line in-memory log
 
   // Fatigue
   fatigueTotal: number;
@@ -86,10 +92,18 @@ export interface RunState {
   setSpeaking:    (v: boolean) => void;
   setMuted:       (v: boolean) => void;
   markCoach:      (trigger: string) => void;
+  setDebugMode:   (v: boolean) => void;
+  appendLog:      (line: string) => void;
 }
 
 function newRunId(): string {
   return `run_${Date.now()}`;
+}
+
+function logEntry(current: string[], line: string): string[] {
+  const ts = new Date().toTimeString().slice(0, 8);
+  const entry = `${ts}  ${line}`;
+  return current.length >= 200 ? [...current.slice(-199), entry] : [...current, entry];
 }
 
 function simPace(config: RunConfig, elapsed: number): number {
@@ -122,17 +136,22 @@ export const useRunStore = create<RunState>((set, get) => ({
   gpsAccuracy:  999,
   displayPace:  0,
 
-  hr:          0,
-  hrZone:      1,
-  hrConnected: false,
+  hr:             0,
+  hrZone:         1,
+  hrConnected:    false,
+  lastHrPacketTs: 0,
 
-  cadence:       0,
-  steps:         0,
-  impact:        0,
-  gct:           0,
-  fpConnected:   false,
-  fpRawSteps:    0,
-  fpStepsOffset: -1,
+  cadence:        0,
+  steps:          0,
+  impact:         0,
+  gct:            0,
+  fpConnected:    false,
+  fpRawSteps:     0,
+  fpStepsOffset:  -1,
+  lastFpPacketTs: 0,
+
+  debugMode: false,
+  debugLog:  [],
 
   fatigueTotal: 0,
   fatigueHR:    0,
@@ -224,8 +243,10 @@ export const useRunStore = create<RunState>((set, get) => ({
     // Display pace
     const displayPace = (s.gpsPace > 0 && !stale) ? s.gpsPace : simPace(s.runConfig, elapsed);
 
-    // HR (sim when not connected)
-    const hr = s.hrConnected ? s.hr : simHR(elapsed, s.runConfig.runType);
+    // HR: use real value only when a packet arrived in the last 5s; otherwise simulate.
+    // Prevents stale hrConnected=true from locking in a simulated value or zero.
+    const hrFresh = s.hrConnected && s.lastHrPacketTs > 0 && (now - s.lastHrPacketTs) < 5000;
+    const hr = hrFresh ? s.hr : simHR(elapsed, s.runConfig.runType);
     const hrZone = getHRZone(hr);
 
     // Fatigue
@@ -260,10 +281,20 @@ export const useRunStore = create<RunState>((set, get) => ({
     });
   },
 
-  updateHR: (hr) => set({ hr, hrZone: getHRZone(hr) }),
+  updateHR: (hr) => {
+    const s = get();
+    const now = Date.now();
+    const hrZone = getHRZone(hr);
+    if (s.debugMode) {
+      set({ hr, hrZone, lastHrPacketTs: now, debugLog: logEntry(s.debugLog, `[HR]  ${hr} bpm  Z${hrZone}`) });
+    } else {
+      set({ hr, hrZone, lastHrPacketTs: now });
+    }
+  },
 
   updateFootPod: (cad, impact, gct, rawSteps) => {
     const s = get();
+    const now = Date.now();
 
     // Cadence: raw is single-foot, double for total
     const cadence = (cad > 0 && cad < 200) ? cad * 2 : s.cadence;
@@ -272,20 +303,50 @@ export const useRunStore = create<RunState>((set, get) => ({
     const offset  = s.fpStepsOffset < 0 ? rawSteps : s.fpStepsOffset;
     const steps   = Math.max(0, rawSteps - offset);
 
-    set({
+    const base = {
       cadence,
-      impact:        impact > 0 ? impact : s.impact,
-      gct:           gct > 0 ? gct : s.gct,
-      fpRawSteps:    rawSteps,
-      fpStepsOffset: offset,
+      impact:         impact > 0 ? impact : s.impact,
+      gct:            gct > 0 ? gct : s.gct,
+      fpRawSteps:     rawSteps,
+      fpStepsOffset:  offset,
       steps,
-    });
+      lastFpPacketTs: now,
+    };
+
+    if (s.debugMode) {
+      set({ ...base, debugLog: logEntry(s.debugLog,
+        `[FP]  cad=${cadence} imp=${impact.toFixed(2)}G gct=${Math.round(gct)}ms steps=${steps}`) });
+    } else {
+      set(base);
+    }
   },
 
-  setFpConnected: (v) => set({ fpConnected: v }),
-  setHrConnected: (v) => set({ hrConnected: v }),
+  setFpConnected: (v) => {
+    const s = get();
+    if (s.debugMode) {
+      set({ fpConnected: v, debugLog: logEntry(s.debugLog, `[BLE] FP ${v ? 'connected' : 'disconnected'}`) });
+    } else {
+      set({ fpConnected: v });
+    }
+  },
+
+  setHrConnected: (v) => {
+    const s = get();
+    if (s.debugMode) {
+      set({ hrConnected: v, debugLog: logEntry(s.debugLog, `[BLE] HR ${v ? 'connected' : 'disconnected'}`) });
+    } else {
+      set({ hrConnected: v });
+    }
+  },
   setSpeaking:    (v) => set({ isSpeaking: v }),
   setMuted:       (v) => set({ coachMuted: v }),
+
+  setDebugMode: (v) => set({ debugMode: v }),
+
+  appendLog: (line) => {
+    const s = get();
+    set({ debugLog: logEntry(s.debugLog, line) });
+  },
 
   markCoach: (trigger) => {
     const now = Date.now();
