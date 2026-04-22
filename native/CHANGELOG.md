@@ -5,6 +5,17 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.1.1] — 2026-04-22
+
+### Fixed
+- **BLE reconnect loop** — `onDisconnected` now clears the scan flag and waits 1 s before retrying, preventing silent reconnect failures where the scan was blocked by a stale `scanning=true` state.
+- **HR simulated while connected** — `tick()` now uses a 5-second packet-freshness check (`lastHrPacketTs`) instead of the binary `hrConnected` flag to decide between real and simulated HR, eliminating the race where a stale flag caused simulated values to appear while Garmin was live.
+
+### Added
+- **Debug overlay** — toggle in Settings → DEBUG. Shows live HR/FP connection status (green = fresh data, amber = BLE connected but no packets, grey = off), packet age in seconds, and a scrollable in-memory log of all BLE events. **SHARE LOG** button opens the Android share sheet to copy or forward the log for diagnostics.
+
+---
+
 ## [2.1.0] — 2026-04-21
 
 ### Added
