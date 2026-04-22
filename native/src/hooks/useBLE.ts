@@ -11,24 +11,18 @@ function bleLog(appendLog: (l: string) => void, line: string) {
 }
 
 export function useBLE() {
-  const fpDevice   = useRef<Device | null>(null);
-  const hrDevice   = useRef<Device | null>(null);
-  const scanning   = useRef(false);
-  const savedFpId  = useRef('');
-  const savedHrId  = useRef('');
+  const fpDevice      = useRef<Device | null>(null);
+  const hrDevice      = useRef<Device | null>(null);
+  const scanning      = useRef(false);
+  const savedFpId     = useRef('');
+  const savedHrId     = useRef('');
+  const seenThisScan  = useRef(new Set<string>());  // dedup device-seen log per scan
 
   const updateFootPod  = useRunStore(s => s.updateFootPod);
   const updateHR       = useRunStore(s => s.updateHR);
   const setFpConnected = useRunStore(s => s.setFpConnected);
   const setHrConnected = useRunStore(s => s.setHrConnected);
   const appendLog      = useRunStore(s => s.appendLog);
-
-  useEffect(() => {
-    loadSettings().then(s => {
-      savedFpId.current = s.fpDeviceId;
-      savedHrId.current = s.hrDeviceId;
-    });
-  }, []);
 
   const connectFootPod = useCallback(async (device: Device) => {
     bleLog(appendLog, `FP connecting — ${device.name ?? device.id}`);
@@ -48,9 +42,9 @@ export function useBLE() {
           const csv = Buffer.from(char.value, 'base64').toString('utf8');
           const [cadStr, impStr, gctStr, stepsStr] = csv.split(',');
           updateFootPod(
-            parseFloat(cadStr)    || 0,
-            parseFloat(impStr)    || 0,
-            parseFloat(gctStr)    || 0,
+            parseFloat(cadStr)     || 0,
+            parseFloat(impStr)     || 0,
+            parseFloat(gctStr)     || 0,
             parseInt(stepsStr, 10) || 0,
           );
         },
@@ -60,7 +54,7 @@ export function useBLE() {
         bleLog(appendLog, `FP disconnected — retrying in 1s`);
         fpDevice.current = null;
         setFpConnected(false);
-        scanning.current = false;  // clear before retry so startScan isn't blocked
+        scanning.current = false;
         setTimeout(startScan, 1000);
       });
     } catch (e: any) {
@@ -94,7 +88,7 @@ export function useBLE() {
         bleLog(appendLog, `HR disconnected — retrying in 1s`);
         hrDevice.current = null;
         setHrConnected(false);
-        scanning.current = false;  // clear before retry so startScan isn't blocked
+        scanning.current = false;
         setTimeout(startScan, 1000);
       });
     } catch (e: any) {
@@ -106,7 +100,10 @@ export function useBLE() {
   const startScan = useCallback(() => {
     if (scanning.current) return;
     scanning.current = true;
-    bleLog(appendLog, `scan started`);
+    seenThisScan.current.clear();
+    bleLog(appendLog,
+      `scan started  fp="${savedFpId.current ? '...' + savedFpId.current.slice(-6) : 'by-name'}"` +
+      `  hr="${savedHrId.current ? '...' + savedHrId.current.slice(-6) : 'not-set'}"`);
 
     bleManager.startDeviceScan(null, { allowDuplicates: false }, (err, device) => {
       if (err) { bleLog(appendLog, `scan error: ${err.message}`); return; }
@@ -114,13 +111,21 @@ export function useBLE() {
       const id   = device.id;
       const name = device.name ?? '';
 
-      // Foot pod: match by saved device ID, fall back to default name
+      // Log every unique named device seen this scan (first 15 to avoid log flood)
+      if (name && !seenThisScan.current.has(id)) {
+        seenThisScan.current.add(id);
+        if (seenThisScan.current.size <= 15) {
+          bleLog(appendLog, `seen: "${name}"  ...${id.slice(-6)}`);
+        }
+      }
+
+      // Foot pod: match by saved ID, fall back to name
       if (!fpDevice.current) {
         const match = savedFpId.current ? id === savedFpId.current : name === FOOT_POD_NAME;
         if (match) connectFootPod(device);
       }
 
-      // HR monitor: match by saved device ID only
+      // HR: match by saved ID only
       if (!hrDevice.current && savedHrId.current && id === savedHrId.current) {
         connectHR(device);
       }
@@ -134,7 +139,7 @@ export function useBLE() {
 
     setTimeout(() => {
       if (scanning.current) {
-        bleLog(appendLog, `scan timeout — restarting`);
+        bleLog(appendLog, `scan timeout — ${seenThisScan.current.size} named device(s) seen, restarting`);
         bleManager.stopDeviceScan();
         scanning.current = false;
         startScan();
@@ -142,15 +147,31 @@ export function useBLE() {
     }, 30000);
   }, [connectFootPod, connectHR, appendLog]);
 
+  // Load settings THEN register BLE state listener.
+  // Fixes race condition where startScan() fired before loadSettings() resolved,
+  // leaving savedHrId empty so the Garmin was never matched.
   useEffect(() => {
-    const sub = bleManager.onStateChange((state) => {
-      if (state === State.PoweredOn) {
-        startScan();
-        sub.remove();
-      }
-    }, true);
+    let sub: { remove: () => void } | null = null;
+    let mounted = true;
+
+    loadSettings().then(s => {
+      if (!mounted) return;
+      savedFpId.current = s.fpDeviceId;
+      savedHrId.current = s.hrDeviceId;
+
+      // immediate=true fires synchronously if BT is already powered on
+      sub = bleManager.onStateChange((state) => {
+        if (state === State.PoweredOn) {
+          startScan();
+          sub?.remove();
+          sub = null;
+        }
+      }, true);
+    });
 
     return () => {
+      mounted = false;
+      sub?.remove();
       bleManager.stopDeviceScan();
       scanning.current = false;
     };

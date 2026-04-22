@@ -5,6 +5,14 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.1.2] — 2026-04-22
+
+### Fixed
+- **BLE race condition — Garmin never connecting** — `onStateChange` fired `startScan()` synchronously before `loadSettings()` resolved, leaving `savedHrId` empty so no HR device was ever matched. Fixed by registering the BLE state listener *inside* the `loadSettings()` callback so saved IDs are always populated before scanning begins.
+- **Scan log blindspot** — timeout message now reports how many named devices were seen per cycle (e.g. `scan timeout — 0 named device(s) seen`). Added per-device `seen: "name"` log entries (first 15 per scan) so the log shows whether the scan callback is firing and what's nearby.
+
+---
+
 ## [2.1.1] — 2026-04-22
 
 ### Fixed

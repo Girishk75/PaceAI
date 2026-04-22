@@ -2,13 +2,13 @@
   "expo": {
     "name": "PaceAI",
     "slug": "paceai",
-    "version": "2.1.1",
+    "version": "2.1.2",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#03070a",
     "android": {
       "package": "com.girishk75.paceai",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
