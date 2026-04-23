@@ -5,6 +5,14 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.1.3] — 2026-04-23
+
+### Fixed
+- **BLE connection storm** — scan callback fires multiple times per second for the same device while an async `connect()` is in flight. Without a guard, each callback launched a new `connectHR()`/`connectFootPod()` call. All concurrent attempts collided ("Device already connected"), each failure fired `onDisconnected`, each disconnect spawned another `startScan`, resulting in a "Cannot start scanning operation" death spiral. Fixed with `hrConnecting` / `fpConnecting` ref guards that block duplicate attempts while one is pending.
+- **Spurious scan restarts on disconnect** — `onDisconnected` unconditionally set `scanning.current = false` and called `startScan()`, even if a scan was already running (e.g. still looking for the foot pod). This caused repeated "Cannot start scanning operation" errors. Fixed: `onDisconnected` now only starts a new scan if no scan is already active.
+
+---
+
 ## [2.1.2] — 2026-04-22
 
 ### Fixed

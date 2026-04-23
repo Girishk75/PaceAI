@@ -14,9 +14,11 @@ export function useBLE() {
   const fpDevice      = useRef<Device | null>(null);
   const hrDevice      = useRef<Device | null>(null);
   const scanning      = useRef(false);
+  const fpConnecting  = useRef(false);   // guard: blocks duplicate FP connect attempts
+  const hrConnecting  = useRef(false);   // guard: blocks duplicate HR connect attempts
   const savedFpId     = useRef('');
   const savedHrId     = useRef('');
-  const seenThisScan  = useRef(new Set<string>());  // dedup device-seen log per scan
+  const seenThisScan  = useRef(new Set<string>());
 
   const updateFootPod  = useRunStore(s => s.updateFootPod);
   const updateHR       = useRunStore(s => s.updateHR);
@@ -51,15 +53,20 @@ export function useBLE() {
       );
 
       connected.onDisconnected(() => {
-        bleLog(appendLog, `FP disconnected — retrying in 1s`);
-        fpDevice.current = null;
+        bleLog(appendLog, `FP disconnected — will retry`);
+        fpDevice.current  = null;
+        fpConnecting.current = false;
         setFpConnected(false);
-        scanning.current = false;
-        setTimeout(startScan, 1000);
+        // Only start a new scan if one isn't already running;
+        // if scanning, the running scan will re-find FP when it reappears.
+        setTimeout(() => { if (!scanning.current) startScan(); }, 1000);
       });
     } catch (e: any) {
       bleLog(appendLog, `FP connect failed: ${e?.message ?? e}`);
+      fpDevice.current  = null;
+      fpConnecting.current = false;
       setFpConnected(false);
+      setTimeout(() => { if (!scanning.current) startScan(); }, 2000);
     }
   }, [updateFootPod, setFpConnected, appendLog]);
 
@@ -85,15 +92,18 @@ export function useBLE() {
       );
 
       connected.onDisconnected(() => {
-        bleLog(appendLog, `HR disconnected — retrying in 1s`);
-        hrDevice.current = null;
+        bleLog(appendLog, `HR disconnected — will retry`);
+        hrDevice.current  = null;
+        hrConnecting.current = false;
         setHrConnected(false);
-        scanning.current = false;
-        setTimeout(startScan, 1000);
+        setTimeout(() => { if (!scanning.current) startScan(); }, 1000);
       });
     } catch (e: any) {
       bleLog(appendLog, `HR connect failed: ${e?.message ?? e}`);
+      hrDevice.current  = null;
+      hrConnecting.current = false;
       setHrConnected(false);
+      setTimeout(() => { if (!scanning.current) startScan(); }, 2000);
     }
   }, [updateHR, setHrConnected, appendLog]);
 
@@ -119,18 +129,23 @@ export function useBLE() {
         }
       }
 
-      // Foot pod: match by saved ID, fall back to name
-      if (!fpDevice.current) {
+      // Foot pod — connecting guard prevents duplicate attempts while async connect is pending
+      if (!fpDevice.current && !fpConnecting.current) {
         const match = savedFpId.current ? id === savedFpId.current : name === FOOT_POD_NAME;
-        if (match) connectFootPod(device);
+        if (match) {
+          fpConnecting.current = true;
+          connectFootPod(device);
+        }
       }
 
-      // HR: match by saved ID only
-      if (!hrDevice.current && savedHrId.current && id === savedHrId.current) {
+      // HR monitor — same guard
+      if (!hrDevice.current && !hrConnecting.current && savedHrId.current && id === savedHrId.current) {
+        hrConnecting.current = true;
         connectHR(device);
       }
 
-      if (fpDevice.current && hrDevice.current) {
+      // Stop scan once both are connected (or connecting)
+      if ((fpDevice.current || fpConnecting.current) && (hrDevice.current || hrConnecting.current)) {
         bleLog(appendLog, `both devices found — scan stopped`);
         bleManager.stopDeviceScan();
         scanning.current = false;
@@ -147,9 +162,8 @@ export function useBLE() {
     }, 30000);
   }, [connectFootPod, connectHR, appendLog]);
 
-  // Load settings THEN register BLE state listener.
-  // Fixes race condition where startScan() fired before loadSettings() resolved,
-  // leaving savedHrId empty so the Garmin was never matched.
+  // Load settings THEN register BLE state listener — ensures savedHrId/savedFpId
+  // are set before the first scan runs (fixes race condition).
   useEffect(() => {
     let sub: { remove: () => void } | null = null;
     let mounted = true;
@@ -159,7 +173,6 @@ export function useBLE() {
       savedFpId.current = s.fpDeviceId;
       savedHrId.current = s.hrDeviceId;
 
-      // immediate=true fires synchronously if BT is already powered on
       sub = bleManager.onStateChange((state) => {
         if (state === State.PoweredOn) {
           startScan();
