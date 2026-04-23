@@ -5,6 +5,14 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.1.5] — 2026-04-23
+
+### Fixed
+- **Settings scan can't find connected devices** — BLE peripherals stop advertising once connected, so Settings scan was blind to any device still held from a previous run. `useBLE` cleanup now explicitly cancels both connections on unmount (run end / screen change) so devices resume advertising and are immediately discoverable in Settings.
+- **Garmin not connecting after settings reset** — HR matching required a saved device ID with no fallback. Added name-based fallback matching `Forerunner`, `Garmin`, `HRM`, `Heart Rate` so the Garmin connects automatically even before it has been saved in Settings.
+
+---
+
 ## [2.1.4] — 2026-04-23
 
 ### Fixed

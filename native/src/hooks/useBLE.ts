@@ -140,10 +140,15 @@ export function useBLE() {
         }
       }
 
-      // HR monitor — same guard
-      if (!hrDevice.current && !hrConnecting.current && savedHrId.current && id === savedHrId.current) {
-        hrConnecting.current = true;
-        connectHR(device);
+      // HR monitor — match by saved ID, fall back to name for Garmin devices
+      if (!hrDevice.current && !hrConnecting.current) {
+        const hrMatch = savedHrId.current
+          ? id === savedHrId.current
+          : (name.includes('Forerunner') || name.includes('Garmin') || name.includes('HRM') || name.includes('Heart Rate'));
+        if (hrMatch) {
+          hrConnecting.current = true;
+          connectHR(device);
+        }
       }
 
       // Stop scan once both are connected (or connecting)
@@ -193,6 +198,14 @@ export function useBLE() {
       sub?.remove();
       bleManager.stopDeviceScan();
       scanning.current = false;
+      // Disconnect devices so they resume advertising — otherwise Settings scan
+      // can't find them (connected BLE peripherals stop broadcasting)
+      fpDevice.current?.cancelConnection().catch(() => {});
+      hrDevice.current?.cancelConnection().catch(() => {});
+      fpDevice.current    = null;
+      hrDevice.current    = null;
+      fpConnecting.current = false;
+      hrConnecting.current = false;
     };
   }, [startScan]);
 
