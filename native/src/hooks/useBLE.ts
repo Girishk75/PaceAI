@@ -140,15 +140,10 @@ export function useBLE() {
         }
       }
 
-      // HR monitor — match by saved ID, fall back to name for Garmin devices
-      if (!hrDevice.current && !hrConnecting.current) {
-        const hrMatch = savedHrId.current
-          ? id === savedHrId.current
-          : (name.includes('Forerunner') || name.includes('Garmin') || name.includes('HRM') || name.includes('Heart Rate'));
-        if (hrMatch) {
-          hrConnecting.current = true;
-          connectHR(device);
-        }
+      // HR monitor — match by saved ID only (no name fallback; configure in Settings)
+      if (!hrDevice.current && !hrConnecting.current && savedHrId.current && id === savedHrId.current) {
+        hrConnecting.current = true;
+        connectHR(device);
       }
 
       // Stop scan once both are connected (or connecting)

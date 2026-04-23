@@ -178,8 +178,11 @@ export function SettingsScreen() {
                 <View style={st.deviceLeft}>
                   <Text style={st.deviceName}>{d.name}</Text>
                   <Text style={st.deviceId}>{d.id}</Text>
+                  <Text style={st.deviceRssi}>{d.rssi} dBm</Text>
                 </View>
-                <Text style={st.deviceRssi}>{d.rssi} dBm</Text>
+                <View style={st.saveBtn}>
+                  <Text style={st.saveBtnTxt}>SAVE</Text>
+                </View>
               </TouchableOpacity>
             ))
           )}
@@ -282,7 +285,9 @@ const st = StyleSheet.create({
   deviceLeft:    { flex: 1, gap: 2 },
   deviceName:    { fontFamily: F.body, fontSize: 14, color: C.text },
   deviceId:      { fontFamily: F.mono, fontSize: 10, color: C.muted },
-  deviceRssi:    { fontFamily: F.mono, fontSize: 12, color: C.muted },
+  deviceRssi:    { fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 2 },
+  saveBtn:       { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(0,255,163,.12)', borderWidth: 1, borderColor: 'rgba(0,255,163,.3)' },
+  saveBtnTxt:    { fontFamily: F.header, fontSize: 10, letterSpacing: 2, color: C.green },
 
   hint:          { fontFamily: F.body, fontSize: 13, color: C.muted, lineHeight: 18 },
   input:         { backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontFamily: F.mono, fontSize: 14 },

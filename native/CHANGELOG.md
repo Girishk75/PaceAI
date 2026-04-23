@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.1.6] — 2026-04-23
+
+### Changed
+- **HR auto-connect by name reverted** — HR monitor only connects by explicitly saved device ID. Configure once in Settings → HEART RATE MONITOR → SCAN FOR DEVICES → SAVE.
+
+### Fixed
+- **Settings scan SAVE not obvious** — each device row in the scan list now shows a green SAVE button so the action is explicit.
+
+---
+
 ## [2.1.5] — 2026-04-23
 
 ### Fixed
