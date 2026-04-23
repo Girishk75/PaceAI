@@ -5,6 +5,14 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.1.4] — 2026-04-23
+
+### Fixed
+- **Unnecessary scan restarts** — scan now checks whether both devices are already connected before restarting after a 30-second timeout, stopping cleanly instead of looping indefinitely.
+- **HR debug log flood** — HR packets logged only when BPM value changes (Garmin sends ~2 Hz; logging every packet filled the 200-line cap in ~90 seconds).
+
+---
+
 ## [2.1.3] — 2026-04-23
 
 ### Fixed

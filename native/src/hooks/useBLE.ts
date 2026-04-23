@@ -109,6 +109,8 @@ export function useBLE() {
 
   const startScan = useCallback(() => {
     if (scanning.current) return;
+    // Both already connected — no scan needed
+    if (fpDevice.current && hrDevice.current) return;
     scanning.current = true;
     seenThisScan.current.clear();
     bleLog(appendLog,
@@ -154,10 +156,14 @@ export function useBLE() {
 
     setTimeout(() => {
       if (scanning.current) {
-        bleLog(appendLog, `scan timeout — ${seenThisScan.current.size} named device(s) seen, restarting`);
         bleManager.stopDeviceScan();
         scanning.current = false;
-        startScan();
+        if (fpDevice.current && hrDevice.current) {
+          bleLog(appendLog, `scan timeout — both connected, scan stopped`);
+        } else {
+          bleLog(appendLog, `scan timeout — ${seenThisScan.current.size} named device(s) seen, restarting`);
+          startScan();
+        }
       }
     }, 30000);
   }, [connectFootPod, connectHR, appendLog]);

@@ -285,7 +285,8 @@ export const useRunStore = create<RunState>((set, get) => ({
     const s = get();
     const now = Date.now();
     const hrZone = getHRZone(hr);
-    if (s.debugMode) {
+    // Only log when value changes — Garmin sends at ~2 Hz which would flood the log
+    if (s.debugMode && hr !== s.hr) {
       set({ hr, hrZone, lastHrPacketTs: now, debugLog: logEntry(s.debugLog, `[HR]  ${hr} bpm  Z${hrZone}`) });
     } else {
       set({ hr, hrZone, lastHrPacketTs: now });
