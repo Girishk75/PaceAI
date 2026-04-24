@@ -13,6 +13,7 @@ import { formatTime, formatPace } from '../algorithms/gps';
 import { RUNNER } from '../constants/runner';
 import { useGPS } from '../hooks/useGPS';
 import { checkTrigger, fireCoach, speak, stopSpeech } from '../services/aiCoach';
+import { DebugOverlay } from '../components/DebugOverlay';
 
 const { width: W } = Dimensions.get('window');
 
@@ -258,6 +259,9 @@ export function LiveRunScreen() {
           <View key={i} style={[st.dot, activePage === i && { backgroundColor: zoneColor, width: 20 }]} />
         ))}
       </View>
+
+      {/* ── Debug overlay (shown when debug mode is on) ── */}
+      {s.debugMode && <DebugOverlay />}
 
       {/* ── Controls ── */}
       <View style={st.ctrl}>

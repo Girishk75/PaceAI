@@ -5,6 +5,76 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.2.0] — 2026-04-24
+
+### Changed
+- **BLE connection — full architectural revamp** — replaced the React-hook-based `useBLE` (fragile `useCallback` dependency chains, recursive scan, stale closures) with a class-based singleton `BLEService` that runs for the entire app lifetime with zero React dependencies.
+  - **Direct reconnect after disconnect** — reconnects by saved device ID instantly (no 20-second scan cycle). On Android, GATT connections by MAC address work without re-scanning.
+  - **Exponential backoff** — retry delays: 2 s → 5 s → 15 s → 30 s, preventing BLE stack hammering.
+  - **Settings scan no longer conflicts with auto-connect** — `SettingsScreen` calls `bleService.pauseForSettings()` on mount (disconnects devices so they advertise) and `bleService.resumeAfterSettings()` on close (reloads saved IDs, restarts auto-connect immediately).
+  - **BT toggle handled** — persistent state listener restarts scanning whenever Bluetooth is turned back on.
+  - **No recursive scan** — scan timeout uses a clean `setTimeout` gap (5 s) before the next cycle, never calls itself.
+
+## [2.1.7] — 2026-04-24
+
+### Added
+- **Device status on Setup screen** — DEVICES section shows live HR and foot pod connection state before starting a run: green dot when connected, amber dot when saved but still searching, grey + CONFIGURE button when not yet set up. Tapping CONFIGURE navigates straight to Settings.
+
+---
+
+## [2.1.6] — 2026-04-23
+
+### Changed
+- **HR auto-connect by name reverted** — HR monitor only connects by explicitly saved device ID. Configure once in Settings → HEART RATE MONITOR → SCAN FOR DEVICES → SAVE.
+
+### Fixed
+- **Settings scan SAVE not obvious** — each device row in the scan list now shows a green SAVE button so the action is explicit.
+
+---
+
+## [2.1.5] — 2026-04-23
+
+### Fixed
+- **Settings scan can't find connected devices** — BLE peripherals stop advertising once connected, so Settings scan was blind to any device still held from a previous run. `useBLE` cleanup now explicitly cancels both connections on unmount (run end / screen change) so devices resume advertising and are immediately discoverable in Settings.
+- **Garmin not connecting after settings reset** — HR matching required a saved device ID with no fallback. Added name-based fallback matching `Forerunner`, `Garmin`, `HRM`, `Heart Rate` so the Garmin connects automatically even before it has been saved in Settings.
+
+---
+
+## [2.1.4] — 2026-04-23
+
+### Fixed
+- **Unnecessary scan restarts** — scan now checks whether both devices are already connected before restarting after a 30-second timeout, stopping cleanly instead of looping indefinitely.
+- **HR debug log flood** — HR packets logged only when BPM value changes (Garmin sends ~2 Hz; logging every packet filled the 200-line cap in ~90 seconds).
+
+---
+
+## [2.1.3] — 2026-04-23
+
+### Fixed
+- **BLE connection storm** — scan callback fires multiple times per second for the same device while an async `connect()` is in flight. Without a guard, each callback launched a new `connectHR()`/`connectFootPod()` call. All concurrent attempts collided ("Device already connected"), each failure fired `onDisconnected`, each disconnect spawned another `startScan`, resulting in a "Cannot start scanning operation" death spiral. Fixed with `hrConnecting` / `fpConnecting` ref guards that block duplicate attempts while one is pending.
+- **Spurious scan restarts on disconnect** — `onDisconnected` unconditionally set `scanning.current = false` and called `startScan()`, even if a scan was already running (e.g. still looking for the foot pod). This caused repeated "Cannot start scanning operation" errors. Fixed: `onDisconnected` now only starts a new scan if no scan is already active.
+
+---
+
+## [2.1.2] — 2026-04-22
+
+### Fixed
+- **BLE race condition — Garmin never connecting** — `onStateChange` fired `startScan()` synchronously before `loadSettings()` resolved, leaving `savedHrId` empty so no HR device was ever matched. Fixed by registering the BLE state listener *inside* the `loadSettings()` callback so saved IDs are always populated before scanning begins.
+- **Scan log blindspot** — timeout message now reports how many named devices were seen per cycle (e.g. `scan timeout — 0 named device(s) seen`). Added per-device `seen: "name"` log entries (first 15 per scan) so the log shows whether the scan callback is firing and what's nearby.
+
+---
+
+## [2.1.1] — 2026-04-22
+
+### Fixed
+- **BLE reconnect loop** — `onDisconnected` now clears the scan flag and waits 1 s before retrying, preventing silent reconnect failures where the scan was blocked by a stale `scanning=true` state.
+- **HR simulated while connected** — `tick()` now uses a 5-second packet-freshness check (`lastHrPacketTs`) instead of the binary `hrConnected` flag to decide between real and simulated HR, eliminating the race where a stale flag caused simulated values to appear while Garmin was live.
+
+### Added
+- **Debug overlay** — toggle in Settings → DEBUG. Shows live HR/FP connection status (green = fresh data, amber = BLE connected but no packets, grey = off), packet age in seconds, and a scrollable in-memory log of all BLE events. **SHARE LOG** button opens the Android share sheet to copy or forward the log for diagnostics.
+
+---
+
 ## [2.1.0] — 2026-04-21
 
 ### Added

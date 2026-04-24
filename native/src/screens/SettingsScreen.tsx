@@ -2,12 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { version as APP_VERSION } from '../../package.json';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Alert, ScrollView, ActivityIndicator,
+  Alert, ScrollView, ActivityIndicator, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { State } from 'react-native-ble-plx';
 import { useRunStore } from '../store/runStore';
 import { bleManager } from '../services/bleManager';
+import { bleService } from '../services/bleService';
 import { loadSettings, saveSettings } from '../services/storage';
 import { C, F } from '../theme';
 
@@ -15,10 +16,13 @@ type ScannedDevice = { id: string; name: string; rssi: number };
 type ScanTarget    = 'hr' | 'fp' | null;
 
 export function SettingsScreen() {
-  const setScreen = useRunStore(s => s.setScreen);
+  const setScreen      = useRunStore(s => s.setScreen);
+  const storeDebugMode = useRunStore(s => s.debugMode);
+  const setDebugMode   = useRunStore(s => s.setDebugMode);
 
-  const [apiKey,  setApiKey]  = useState('');
-  const [keySaved, setKeySaved] = useState(false);
+  const [apiKey,    setApiKey]    = useState('');
+  const [keySaved,  setKeySaved]  = useState(false);
+  const [localDebug, setLocalDebug] = useState(false);
 
   const [hrDevice, setHrDevice] = useState<{ id: string; name: string } | null>(null);
   const [fpDevice, setFpDevice] = useState<{ id: string; name: string } | null>(null);
@@ -34,13 +38,20 @@ export function SettingsScreen() {
       setApiKey(s.apiKey);
       if (s.hrDeviceId) setHrDevice({ id: s.hrDeviceId, name: s.hrDeviceName });
       if (s.fpDeviceId) setFpDevice({ id: s.fpDeviceId, name: s.fpDeviceName });
+      setLocalDebug(s.debugMode);
+      setDebugMode(s.debugMode);  // sync store with persisted setting
     });
-  }, []);
+  }, [setDebugMode]);
 
+  // Pause auto-connect while Settings is open so devices stop being held and
+  // resume advertising — otherwise they won't appear in the scan list.
+  // On close, auto-connect picks up the latest saved IDs immediately.
   useEffect(() => {
+    bleService.pauseForSettings();
     return () => {
       bleManager.stopDeviceScan();
       if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+      bleService.resumeAfterSettings();
     };
   }, []);
 
@@ -101,6 +112,13 @@ export function SettingsScreen() {
     await saveSettings({ ...s, apiKey: apiKey.trim() });
     setKeySaved(true);
     setTimeout(() => setKeySaved(false), 2000);
+  };
+
+  const toggleDebug = async (val: boolean) => {
+    setLocalDebug(val);
+    setDebugMode(val);
+    const s = await loadSettings();
+    await saveSettings({ ...s, debugMode: val });
   };
 
   const clearKey = () => {
@@ -166,8 +184,11 @@ export function SettingsScreen() {
                 <View style={st.deviceLeft}>
                   <Text style={st.deviceName}>{d.name}</Text>
                   <Text style={st.deviceId}>{d.id}</Text>
+                  <Text style={st.deviceRssi}>{d.rssi} dBm</Text>
                 </View>
-                <Text style={st.deviceRssi}>{d.rssi} dBm</Text>
+                <View style={st.saveBtn}>
+                  <Text style={st.saveBtnTxt}>SAVE</Text>
+                </View>
               </TouchableOpacity>
             ))
           )}
@@ -213,6 +234,22 @@ export function SettingsScreen() {
           </View>
         </View>
 
+        <View style={st.section}>
+          <Text style={st.sectionLabel}>DEBUG</Text>
+          <View style={st.debugRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.debugTitle}>Debug overlay</Text>
+              <Text style={st.hint}>Shows live BLE status and log during a run. Tap SHARE LOG to copy.</Text>
+            </View>
+            <Switch
+              value={localDebug}
+              onValueChange={toggleDebug}
+              trackColor={{ false: C.dim, true: C.green + '66' }}
+              thumbColor={localDebug ? C.green : C.muted}
+            />
+          </View>
+        </View>
+
         <View style={st.about}>
           <Text style={st.sectionLabel}>ABOUT</Text>
           <Text style={st.aboutTxt}>PaceAI v{APP_VERSION}</Text>
@@ -254,7 +291,9 @@ const st = StyleSheet.create({
   deviceLeft:    { flex: 1, gap: 2 },
   deviceName:    { fontFamily: F.body, fontSize: 14, color: C.text },
   deviceId:      { fontFamily: F.mono, fontSize: 10, color: C.muted },
-  deviceRssi:    { fontFamily: F.mono, fontSize: 12, color: C.muted },
+  deviceRssi:    { fontFamily: F.mono, fontSize: 10, color: C.muted, marginTop: 2 },
+  saveBtn:       { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(0,255,163,.12)', borderWidth: 1, borderColor: 'rgba(0,255,163,.3)' },
+  saveBtnTxt:    { fontFamily: F.header, fontSize: 10, letterSpacing: 2, color: C.green },
 
   hint:          { fontFamily: F.body, fontSize: 13, color: C.muted, lineHeight: 18 },
   input:         { backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontFamily: F.mono, fontSize: 14 },
@@ -263,6 +302,9 @@ const st = StyleSheet.create({
   btnSave:       { backgroundColor: 'rgba(0,255,163,.12)', borderColor: 'rgba(0,255,163,.3)' },
   btnClear:      { backgroundColor: 'rgba(255,69,96,.12)', borderColor: 'rgba(255,69,96,.25)' },
   btnTxt:        { fontFamily: F.header, fontSize: 13, fontWeight: '700', letterSpacing: 2 },
+
+  debugRow:      { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  debugTitle:    { fontFamily: F.header, fontSize: 12, letterSpacing: 1, color: C.text, marginBottom: 4 },
 
   about:         { padding: 16, gap: 6 },
   aboutTxt:      { fontFamily: F.body, fontSize: 13, color: C.muted, lineHeight: 20 },
