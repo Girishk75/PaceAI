@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.2.0] — 2026-04-24
+
+### Changed
+- **BLE connection — full architectural revamp** — replaced the React-hook-based `useBLE` (fragile `useCallback` dependency chains, recursive scan, stale closures) with a class-based singleton `BLEService` that runs for the entire app lifetime with zero React dependencies.
+  - **Direct reconnect after disconnect** — reconnects by saved device ID instantly (no 20-second scan cycle). On Android, GATT connections by MAC address work without re-scanning.
+  - **Exponential backoff** — retry delays: 2 s → 5 s → 15 s → 30 s, preventing BLE stack hammering.
+  - **Settings scan no longer conflicts with auto-connect** — `SettingsScreen` calls `bleService.pauseForSettings()` on mount (disconnects devices so they advertise) and `bleService.resumeAfterSettings()` on close (reloads saved IDs, restarts auto-connect immediately).
+  - **BT toggle handled** — persistent state listener restarts scanning whenever Bluetooth is turned back on.
+  - **No recursive scan** — scan timeout uses a clean `setTimeout` gap (5 s) before the next cycle, never calls itself.
+
 ## [2.1.7] — 2026-04-24
 
 ### Added

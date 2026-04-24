@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { State } from 'react-native-ble-plx';
 import { useRunStore } from '../store/runStore';
 import { bleManager } from '../services/bleManager';
+import { bleService } from '../services/bleService';
 import { loadSettings, saveSettings } from '../services/storage';
 import { C, F } from '../theme';
 
@@ -42,10 +43,15 @@ export function SettingsScreen() {
     });
   }, [setDebugMode]);
 
+  // Pause auto-connect while Settings is open so devices stop being held and
+  // resume advertising — otherwise they won't appear in the scan list.
+  // On close, auto-connect picks up the latest saved IDs immediately.
   useEffect(() => {
+    bleService.pauseForSettings();
     return () => {
       bleManager.stopDeviceScan();
       if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+      bleService.resumeAfterSettings();
     };
   }, []);
 
