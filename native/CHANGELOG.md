@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.1.7] — 2026-04-24
+
+### Added
+- **Device status on Setup screen** — DEVICES section shows live HR and foot pod connection state before starting a run: green dot when connected, amber dot when saved but still searching, grey + CONFIGURE button when not yet set up. Tapping CONFIGURE navigates straight to Settings.
+
+---
+
 ## [2.1.6] — 2026-04-23
 
 ### Changed
