@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.2.1] — 2026-04-25
+
+### Fixed
+- **Explicit connect timeout** — scan-based `connect()` now has a 10 s timeout (previously could hang indefinitely if the device stopped responding mid-handshake).
+- **Monitor error → forced reconnect** — if the GATT characteristic subscription dies for any reason (BLE stack error, Android GATT error 133, etc.) the error handler now calls `cancelConnection()` to guarantee `onDisconnected` fires and the normal retry cycle kicks in. Previously the error was logged and ignored, leaving the device in a "connected but no data" limbo.
+- **Foot pod data watchdog** — a 3 s interval checks `lastFpPacketTs` while FP is connected. If no packet has arrived for 6 s (the ESP32 sends at 1 Hz) the watchdog forces a disconnect so the retry cycle re-establishes the subscription. Catches silent GATT subscription failures that keep `fpConnected=true` while data has stopped.
+
 ## [2.2.0] — 2026-04-24
 
 ### Changed
