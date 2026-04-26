@@ -44,9 +44,10 @@ export interface RunState {
   lastHrPacketTs: number;  // ms — wall clock of last BLE HR packet
 
   // Foot pod
-  cadence:        number;  // both feet (raw × 2)
+  cadence:        number;  // total spm (both feet, direct from firmware)
   steps:          number;  // per run (offset corrected)
-  impact:         number;  // G
+  impact:         number;  // G — rolling 4-value average
+  impBuffer:      number[];  // last 4 raw impact readings for smoothing
   gct:            number;  // ms
   fpConnected:    boolean;
   fpRawSteps:     number;  // cumulative from ESP32
@@ -144,6 +145,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   cadence:        0,
   steps:          0,
   impact:         0,
+  impBuffer:      [],
   gct:            0,
   fpConnected:    false,
   fpRawSteps:     0,
@@ -195,6 +197,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       cadence:     0,
       steps:       0,
       impact:      0,
+      impBuffer:   [],
       gct:         0,
       fpRawSteps:  0,
       fpStepsOffset: -1,
@@ -297,8 +300,17 @@ export const useRunStore = create<RunState>((set, get) => ({
     const s = get();
     const now = Date.now();
 
-    // Cadence: raw is single-foot, double for total
-    const cadence = (cad > 0 && cad < 200) ? cad * 2 : s.cadence;
+    // Cadence: firmware sends total spm (both feet) — no doubling needed.
+    const cadence = (cad > 0 && cad < 250) ? cad : s.cadence;
+
+    // Impact: 4-value rolling average smooths the footstrike/swing alternation
+    // (ESP32 alternates between ~9G landing peak and ~2.7G swing phase at 1 Hz).
+    const impBuffer = impact > 0
+      ? [...s.impBuffer.slice(-3), impact]
+      : s.impBuffer;
+    const smoothImpact = impBuffer.length > 0
+      ? impBuffer.reduce((a, b) => a + b, 0) / impBuffer.length
+      : s.impact;
 
     // Step offset: set on first packet after run start
     const offset  = s.fpStepsOffset < 0 ? rawSteps : s.fpStepsOffset;
@@ -306,7 +318,8 @@ export const useRunStore = create<RunState>((set, get) => ({
 
     const base = {
       cadence,
-      impact:         impact > 0 ? impact : s.impact,
+      impact:         impact > 0 ? smoothImpact : s.impact,
+      impBuffer,
       gct:            gct > 0 ? gct : s.gct,
       fpRawSteps:     rawSteps,
       fpStepsOffset:  offset,

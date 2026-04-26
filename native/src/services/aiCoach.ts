@@ -4,7 +4,7 @@ import { formatPace, formatTime } from '../algorithms/gps';
 import { RUNNER } from '../constants/runner';
 import { RunState } from '../store/runStore';
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 
 // Check if a trigger should fire and build the trigger string.
 // Returns null if conditions not met.
@@ -161,16 +161,24 @@ export function speak(text: string, onDone?: () => void): void {
   Tts.stop();
 
   if (onDone) {
-    const finishSub = Tts.addEventListener('tts-finish', () => {
+    // Guard against double-call (tts-finish + safety timeout firing close together)
+    let called = false;
+    const done = () => {
+      if (called) return;
+      called = true;
       finishSub.remove();
       errSub.remove();
+      cancelSub.remove();
+      clearTimeout(safety);
       onDone();
-    });
-    const errSub = Tts.addEventListener('tts-error', () => {
-      finishSub.remove();
-      errSub.remove();
-      onDone();
-    });
+    };
+    const finishSub  = Tts.addEventListener('tts-finish', done);
+    const errSub     = Tts.addEventListener('tts-error',  done);
+    // tts-cancel fires when speech is interrupted (phone call, audio focus loss,
+    // Tts.stop() call) — without this handler isSpeaking stays true forever.
+    const cancelSub  = Tts.addEventListener('tts-cancel', done);
+    // Safety net: if no TTS event fires within 30s, reset isSpeaking anyway.
+    const safety     = setTimeout(done, 30_000);
   }
 
   // STREAM_MUSIC routes audio through the music stream so ducking applies

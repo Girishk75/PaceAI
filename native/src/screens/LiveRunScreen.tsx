@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Dimensions, Animated, NativeSyntheticEvent, NativeScrollEvent,
+  Dimensions, Animated, NativeSyntheticEvent, NativeScrollEvent, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BackgroundTimer from 'react-native-background-timer';
@@ -91,6 +91,17 @@ export function LiveRunScreen() {
     stopSpeech();
     KeepAwake.deactivateKeepAwake();
     pauseRun();
+  };
+
+  const handleEnd = () => {
+    Alert.alert(
+      'End Run?',
+      `${formatTime(s.elapsedSecs)}  ·  ${s.dist.toFixed(2)} km`,
+      [
+        { text: 'Keep Running', style: 'cancel' },
+        { text: 'End Run', style: 'destructive', onPress: () => { stopSpeech(); endRun(); } },
+      ],
+    );
   };
 
   // Predictions
@@ -268,7 +279,7 @@ export function LiveRunScreen() {
         <TouchableOpacity style={[st.btn, st.btnPause]} onPress={handlePause}>
           <Text style={[st.btnTxt, { color: C.warn }]}>⏸  PAUSE</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[st.btn, st.btnEnd]} onPress={endRun}>
+        <TouchableOpacity style={[st.btn, st.btnEnd]} onPress={handleEnd}>
           <Text style={[st.btnTxt, { color: C.red }]}>■  END</Text>
         </TouchableOpacity>
       </View>

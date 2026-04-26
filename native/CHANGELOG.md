@@ -5,6 +5,17 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.2.2] — 2026-04-26
+
+### Fixed
+- **AI coach fires only once per run** — `speak()` had no `tts-cancel` handler. Any audio interruption (phone call, notification, OS audio focus preemption) cancelled TTS without calling `onDone()`, leaving `isSpeaking=true` permanently and silently blocking every subsequent 2-min check-in and trigger for the rest of the run. Fixed: `tts-cancel` now calls `done()` just like `tts-finish` and `tts-error`. Added a 30 s safety timeout as a final fallback.
+- **Cadence reads ~360 spm instead of ~180** — `updateFootPod` was doing `cad * 2` on a value the firmware already sends as total spm (both feet). Step-count analysis confirms 3 steps/sec = 180 spm total; the doubling was wrong. Removed the `* 2`.
+- **Impact alternates 9 G / 2.7 G every second** — the ESP32 sends one reading per step, alternating between the footstrike peak (~9 G) and the swing/recovery phase (~2.7 G). Added a 4-value rolling average (`impBuffer`) so the display and coach see a stable ~5–6 G rather than wild swings.
+- **Accidental END ends the run silently** — tapping END now shows a confirmation alert ("End Run? 1:37:17 · 13.32 km") with a "Keep Running" cancel option, preventing the accidental mid-run termination seen in today's run data.
+
+### Changed
+- **AI Coach model updated** to `claude-sonnet-4-6` (latest).
+
 ## [2.2.1] — 2026-04-25
 
 ### Fixed
