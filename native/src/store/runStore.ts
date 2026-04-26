@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { RunType, Weather } from '../constants/runner';
+import { RunType, Weather, RUNNER } from '../constants/runner';
 import { calcFatigue } from '../algorithms/fatigue';
 import { formatTime } from '../algorithms/gps';
 import { getHRZone, simHR } from '../algorithms/hrZone';
@@ -42,12 +42,21 @@ export interface RunState {
   hrZone:         number;
   hrConnected:    boolean;
   lastHrPacketTs: number;  // ms — wall clock of last BLE HR packet
+  hrSum:          number;
+  hrCount:        number;
+  maxHR:          number;
 
   // Foot pod
   cadence:        number;  // total spm (both feet, direct from firmware)
   steps:          number;  // per run (offset corrected)
   impact:         number;  // G — rolling 4-value average
   impBuffer:      number[];  // last 4 raw impact readings for smoothing
+  cadSum:         number;
+  cadCount:       number;
+  impSum:         number;
+  impCount:       number;
+  gctSum:         number;
+  gctCount:       number;
   gct:            number;  // ms
   fpConnected:    boolean;
   fpRawSteps:     number;  // cumulative from ESP32
@@ -141,11 +150,17 @@ export const useRunStore = create<RunState>((set, get) => ({
   hrZone:         1,
   hrConnected:    false,
   lastHrPacketTs: 0,
+  hrSum:   0,
+  hrCount: 0,
+  maxHR:   0,
 
   cadence:        0,
   steps:          0,
   impact:         0,
   impBuffer:      [],
+  cadSum:  0, cadCount: 0,
+  impSum:  0, impCount: 0,
+  gctSum:  0, gctCount: 0,
   gct:            0,
   fpConnected:    false,
   fpRawSteps:     0,
@@ -215,6 +230,10 @@ export const useRunStore = create<RunState>((set, get) => ({
       lastImpCoachTs:  0,
       lastFatCoachTs:  0,
       lastZ5CoachTs:   0,
+      hrSum:  0, hrCount: 0, maxHR:  0,
+      cadSum: 0, cadCount: 0,
+      impSum: 0, impCount: 0,
+      gctSum: 0, gctCount: 0,
     });
   },
 
@@ -253,7 +272,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     const hrZone = getHRZone(hr);
 
     // Fatigue
-    const fat = calcFatigue(hr, s.cadence || s.runConfig.targetPace ? 170 : 170, s.gct || 245, s.impact || 2.1, elapsed);
+    const fat = calcFatigue(hr, s.cadence || 170, s.gct || 245, s.impact || RUNNER.baseImpact, elapsed);
 
     set({
       elapsedSecs:  elapsed,
@@ -286,13 +305,16 @@ export const useRunStore = create<RunState>((set, get) => ({
 
   updateHR: (hr) => {
     const s = get();
-    const now = Date.now();
-    const hrZone = getHRZone(hr);
+    const now     = Date.now();
+    const hrZone  = getHRZone(hr);
+    const hrSum   = s.hrSum + hr;
+    const hrCount = s.hrCount + 1;
+    const maxHR   = Math.max(s.maxHR, hr);
     // Only log when value changes — Garmin sends at ~2 Hz which would flood the log
     if (s.debugMode && hr !== s.hr) {
-      set({ hr, hrZone, lastHrPacketTs: now, debugLog: logEntry(s.debugLog, `[HR]  ${hr} bpm  Z${hrZone}`) });
+      set({ hr, hrZone, lastHrPacketTs: now, hrSum, hrCount, maxHR, debugLog: logEntry(s.debugLog, `[HR]  ${hr} bpm  Z${hrZone}`) });
     } else {
-      set({ hr, hrZone, lastHrPacketTs: now });
+      set({ hr, hrZone, lastHrPacketTs: now, hrSum, hrCount, maxHR });
     }
   },
 
@@ -325,6 +347,12 @@ export const useRunStore = create<RunState>((set, get) => ({
       fpStepsOffset:  offset,
       steps,
       lastFpPacketTs: now,
+      cadSum:   cadence > 0 ? s.cadSum   + cadence      : s.cadSum,
+      cadCount: cadence > 0 ? s.cadCount + 1            : s.cadCount,
+      impSum:   impact  > 0 ? s.impSum   + smoothImpact : s.impSum,
+      impCount: impact  > 0 ? s.impCount + 1            : s.impCount,
+      gctSum:   gct     > 0 ? s.gctSum   + gct          : s.gctSum,
+      gctCount: gct     > 0 ? s.gctCount + 1            : s.gctCount,
     };
 
     if (s.debugMode) {

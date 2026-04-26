@@ -45,7 +45,7 @@ export function checkTrigger(s: RunState): string | null {
   if (el > 30 && cad > 0 && cad < 165 && (now - s.lastCadCoachTs) > 60000) return 'low_cad';
 
   // Impact (every 90s)
-  if (imp > 2.8 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
+  if (imp > 7.5 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
 
   // Fatigue (every 60s)
   if (fat > 7 && (now - s.lastFatCoachTs) > 60000) return 'high_fat';

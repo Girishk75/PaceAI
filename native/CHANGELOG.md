@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.2.3] — 2026-04-26
+
+### Fixed
+- **Impact thresholds miscalibrated for rolling average** — v2.2.2 added a 4-value rolling average that produces ~5.8 G (average of ~9 G footstrike and ~2.7 G swing). The old thresholds (base 2.1 G, coach trigger > 2.8 G, UI red > 2.8 G) meant the impact gauge was permanently red and the high-impact coach fired every 90 s regardless of actual form. Updated: `RUNNER.baseImpact` 2.1 → 5.5, fatigue baseline 2.1 → 5.5, coach trigger > 7.5 G, UI red > 8.0 G / warn > 7.0 G.
+- **Run summary saves snapshot values, not true averages** — `avgHR`, `avgCadence`, `avgImpact`, `avgGCT`, and `avgPace` all previously saved the last store value at the moment END was tapped (e.g. HR showed 122 bpm when the Garmin recorded a 148 bpm average). Added per-packet accumulators (`hrSum/hrCount`, `cadSum/cadCount`, `impSum/impCount`, `gctSum/gctCount`) to the store, reset at run start, divided at run end for true means. `avgPace` now computed as `elapsedSecs / dist` instead of last instant pace.
+- **maxHR always equalled avgHR** — both fields saved the same last-packet value. `maxHR` is now tracked as a running maximum throughout the run.
+- **Fatigue cadence input always 170** — `s.cadence || s.runConfig.targetPace ? 170 : 170` (operator-precedence bug) always evaluated to 170, ignoring the real cadence. Fixed to `s.cadence || 170`.
+
+---
+
 ## [2.2.2] — 2026-04-26
 
 ### Fixed

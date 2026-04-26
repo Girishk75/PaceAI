@@ -10,7 +10,7 @@ export function calcFatigue(
   const compHR  = Math.max(0, (hr - 143) / 20) * 3.5;
   const compCad = elapsedSecs < 30 ? 0 : Math.max(0, 172 - cadence) * 0.6;
   const compGCT = Math.max(0, gct - 245) * 0.05;
-  const compImp = Math.max(0, impact - 2.1) * 4;
+  const compImp = Math.max(0, impact - 5.5) * 4;
 
   const total = compHR * 0.35 + compCad * 0.25 + compGCT * 0.20 + compImp * 0.20;
 

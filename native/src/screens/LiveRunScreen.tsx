@@ -222,7 +222,7 @@ export function LiveRunScreen() {
           {s.fpConnected ? (
             <>
               <PodMetric label="IMPACT" value={s.impact.toFixed(2)} unit="G"
-                color={s.impact > 2.8 ? C.red : s.impact > 2.4 ? C.warn : C.green}
+                color={s.impact > 8.0 ? C.red : s.impact > 7.0 ? C.warn : C.green}
                 size="large" />
               <View style={st.podRow}>
                 <PodMetric label="GCT" value={`${Math.round(s.gct)}`} unit="ms"

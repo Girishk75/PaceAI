@@ -8,7 +8,7 @@ export const RUNNER = {
   restingHR:     65,
   baseCadence:   172,
   baseGCT:       245,
-  baseImpact:    2.1,
+  baseImpact:    5.5,  // smoothed 4-value rolling avg of footstrike/swing at 1 Hz
   conditions:    'Warm & humid (Mumbai mornings)',
   watch:         'Garmin Forerunner 245',
 } as const;

@@ -10,6 +10,13 @@ export function DoneScreen() {
   const s         = useRunStore();
   const setScreen = useRunStore(st => st.setScreen);
 
+  const avgPace = s.dist > 0 ? Math.round(s.elapsedSecs / s.dist) : s.displayPace;
+  const avgHR   = s.hrCount  > 0 ? Math.round(s.hrSum  / s.hrCount)  : s.hr;
+  const peakHR  = s.maxHR || s.hr;
+  const avgCad  = s.cadCount > 0 ? Math.round(s.cadSum  / s.cadCount) : s.cadence;
+  const avgImp  = s.impCount > 0 ? s.impSum / s.impCount               : s.impact;
+  const avgGCT  = s.gctCount > 0 ? Math.round(s.gctSum  / s.gctCount)  : s.gct;
+
   useEffect(() => {
     // Persist run record
     saveRun({
@@ -22,13 +29,13 @@ export function DoneScreen() {
       targetPace:  s.runConfig.targetPace,
       elapsedSecs: s.elapsedSecs,
       distKm:      s.dist,
-      avgPace:     s.displayPace,
-      avgHR:       s.hr,
-      maxHR:       s.hr,
+      avgPace,
+      avgHR,
+      maxHR:       peakHR,
       steps:       s.steps,
-      avgCadence:  s.cadence,
-      avgImpact:   s.impact,
-      avgGCT:      s.gct,
+      avgCadence:  avgCad,
+      avgImpact:   avgImp,
+      avgGCT,
       avgFatigue:  s.fatigueTotal,
       peakFatigue: s.fatigueTotal,
     });
@@ -43,12 +50,13 @@ export function DoneScreen() {
       weather:     s.runConfig.weather,
       distKm:      s.dist.toFixed(3),
       duration:    formatTime(s.elapsedSecs),
-      avgPace:     formatPace(s.displayPace),
-      avgHR:       s.hr,
-      cadence:     s.cadence,
+      avgPace:     formatPace(avgPace),
+      avgHR,
+      maxHR:       peakHR,
+      cadence:     avgCad,
       steps:       s.steps,
-      impact:      s.impact.toFixed(2),
-      gct:         s.gct,
+      impact:      avgImp.toFixed(2),
+      gct:         avgGCT,
       fatigue:     s.fatigueTotal.toFixed(2),
     }];
     await shareCSV(`paceai_run_${s.runId}.csv`, rows as any);
@@ -78,16 +86,19 @@ export function DoneScreen() {
           <Big label="DIST"  value={`${s.dist.toFixed(2)} km`} />
         </View>
         <View style={st.summaryRow}>
-          <Big label="AVG PACE" value={formatPace(s.displayPace)} unit="/km" />
-          <Big label="AVG HR"   value={`${s.hr || '--'} bpm`} />
+          <Big label="AVG PACE" value={formatPace(avgPace)} unit="/km" />
+          <Big label="AVG HR"   value={`${avgHR || '--'} bpm`} />
+        </View>
+        <View style={st.summaryRow}>
+          <Big label="MAX HR"   value={`${peakHR || '--'} bpm`} />
+          <Big label="CADENCE"  value={`${avgCad || '--'} spm`} />
         </View>
         <View style={st.summaryRow}>
           <Big label="STEPS"    value={`${s.steps}`} />
-          <Big label="CADENCE"  value={`${s.cadence || '--'} spm`} />
+          <Big label="GCT"      value={`${avgGCT || '--'} ms`} />
         </View>
         <View style={st.summaryRow}>
-          <Big label="IMPACT"   value={`${s.impact.toFixed(2)} G`} />
-          <Big label="GCT"      value={`${s.gct || '--'} ms`} />
+          <Big label="IMPACT"   value={`${avgImp.toFixed(2)} G`} />
         </View>
         <View style={st.summaryRow}>
           <Big label="FATIGUE"  value={`${s.fatigueTotal.toFixed(1)} / 10`} />
