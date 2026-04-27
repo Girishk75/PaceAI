@@ -378,7 +378,7 @@ static void bleSetup() {
 }
 
 // Broadcast "cadence,impact,gct,steps"
-// cadence = single-foot spm — app multiplies by 2 for total
+// cadence = total spm (both feet) — app uses this value directly, no doubling
 static void bleBroadcast() {
   char buf[64];
   snprintf(buf, sizeof(buf), "%.0f,%.2f,%.0f,%lu",
