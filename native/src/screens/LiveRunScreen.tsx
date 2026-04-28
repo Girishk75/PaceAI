@@ -20,6 +20,8 @@ const { width: W } = Dimensions.get('window');
 const ZONE_COLOR = ['', '#00c8ff', '#00ffa3', '#ffb700', '#ff8c00', '#ff4560'];
 const ZONE_LABEL = ['', 'Recovery', 'Aerobic', 'Tempo', 'Threshold', 'Max'];
 const PAGE_LABELS = ['ESSENTIALS', 'BODY', 'POD', 'COACH'];
+const STRIKE_LABEL   = ['MID', 'HEEL', 'FORE'];
+const PRONATION_LABEL = ['NEUTRAL', 'OVER', 'RIGID'];
 
 export function LiveRunScreen() {
   const s           = useRunStore();
@@ -233,6 +235,14 @@ export function LiveRunScreen() {
               <PodMetric label="CADENCE" value={`${s.cadence}`} unit="spm"
                 color={s.cadence > 0 && s.cadence < 165 ? C.warn : C.green}
                 size="medium" />
+              <View style={st.podRow}>
+                <PodMetric label="STRIKE"
+                  value={s.strikeCode >= 0 ? STRIKE_LABEL[s.strikeCode] : '--'}
+                  unit="" color={C.text} size="medium" />
+                <PodMetric label="PRONATION"
+                  value={s.pronationCode >= 0 ? PRONATION_LABEL[s.pronationCode] : '--'}
+                  unit="" color={s.pronationCode === 1 ? C.warn : C.text} size="medium" />
+              </View>
             </>
           ) : (
             <View style={st.podSim}>

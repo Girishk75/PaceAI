@@ -223,13 +223,20 @@ class BLEService {
         return;
       }
       if (!char?.value) return;
-      const csv = Buffer.from(char.value, 'base64').toString('utf8');
-      const [cad, imp, gct, steps] = csv.split(',');
+      const csv   = Buffer.from(char.value, 'base64').toString('utf8');
+      const parts = csv.split(',');
+      const [cad, imp, gct, steps] = parts;
+      // Fields 5+6 are strike/pronation codes from v2.3 firmware.
+      // Old firmware sends only 4 fields — treat missing as -1 (unknown).
+      const strikeRaw = parts[4] !== undefined ? parseInt(parts[4], 10) : -1;
+      const pronRaw   = parts[5] !== undefined ? parseInt(parts[5], 10) : -1;
       useRunStore.getState().updateFootPod(
         parseFloat(cad)     || 0,
         parseFloat(imp)     || 0,
         parseFloat(gct)     || 0,
         parseInt(steps, 10) || 0,
+        isNaN(strikeRaw) ? -1 : strikeRaw,
+        isNaN(pronRaw)   ? -1 : pronRaw,
       );
     });
 

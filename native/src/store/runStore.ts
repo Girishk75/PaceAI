@@ -63,6 +63,18 @@ export interface RunState {
   fpStepsOffset:  number;
   lastFpPacketTs: number;  // ms — wall clock of last BLE foot pod packet
 
+  // Strike / pronation (v2.3)
+  strikeCode:        number;  // most recent: -1=unknown, 0=midfoot, 1=heel, 2=forefoot
+  pronationCode:     number;  // most recent: -1=unknown, 0=neutral, 1=over, 2=rigid
+  strikeHeel:        number;
+  strikeMid:         number;
+  strikeFore:        number;
+  pronNeutral:       number;
+  pronOver:          number;
+  pronRigid:         number;
+  lastStrikeCoachTs: number;
+  lastPronCoachTs:   number;
+
   // Debug
   debugMode: boolean;
   debugLog:  string[];  // rolling 200-line in-memory log
@@ -96,7 +108,7 @@ export interface RunState {
   tick:           () => void;
   updateGPS:      (pace: number, distKm: number, accuracy: number) => void;
   updateHR:       (hr: number) => void;
-  updateFootPod:  (cad: number, impact: number, gct: number, rawSteps: number) => void;
+  updateFootPod:  (cad: number, impact: number, gct: number, rawSteps: number, strike?: number, pronation?: number) => void;
   setFpConnected: (v: boolean) => void;
   setHrConnected: (v: boolean) => void;
   setSpeaking:    (v: boolean) => void;
@@ -167,6 +179,11 @@ export const useRunStore = create<RunState>((set, get) => ({
   fpStepsOffset:  -1,
   lastFpPacketTs: 0,
 
+  strikeCode: -1, pronationCode: -1,
+  strikeHeel: 0, strikeMid: 0, strikeFore: 0,
+  pronNeutral: 0, pronOver: 0, pronRigid: 0,
+  lastStrikeCoachTs: 0, lastPronCoachTs: 0,
+
   debugMode: false,
   debugLog:  [],
 
@@ -234,6 +251,10 @@ export const useRunStore = create<RunState>((set, get) => ({
       cadSum: 0, cadCount: 0,
       impSum: 0, impCount: 0,
       gctSum: 0, gctCount: 0,
+      strikeCode: -1, pronationCode: -1,
+      strikeHeel: 0, strikeMid: 0, strikeFore: 0,
+      pronNeutral: 0, pronOver: 0, pronRigid: 0,
+      lastStrikeCoachTs: 0, lastPronCoachTs: 0,
     });
   },
 
@@ -318,7 +339,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     }
   },
 
-  updateFootPod: (cad, impact, gct, rawSteps) => {
+  updateFootPod: (cad, impact, gct, rawSteps, strike = -1, pronation = -1) => {
     const s = get();
     const now = Date.now();
 
@@ -338,6 +359,16 @@ export const useRunStore = create<RunState>((set, get) => ({
     const offset  = s.fpStepsOffset < 0 ? rawSteps : s.fpStepsOffset;
     const steps   = Math.max(0, rawSteps - offset);
 
+    // Strike / pronation — update most-recent code and per-type counts
+    const strikeCode    = strike    >= 0 ? strike    : s.strikeCode;
+    const pronationCode = pronation >= 0 ? pronation : s.pronationCode;
+    const strikeHeel  = s.strikeHeel  + (strike === 1 ? 1 : 0);
+    const strikeMid   = s.strikeMid   + (strike === 0 ? 1 : 0);
+    const strikeFore  = s.strikeFore  + (strike === 2 ? 1 : 0);
+    const pronNeutral = s.pronNeutral + (pronation === 0 ? 1 : 0);
+    const pronOver    = s.pronOver    + (pronation === 1 ? 1 : 0);
+    const pronRigid   = s.pronRigid   + (pronation === 2 ? 1 : 0);
+
     const base = {
       cadence,
       impact:         impact > 0 ? smoothImpact : s.impact,
@@ -353,11 +384,16 @@ export const useRunStore = create<RunState>((set, get) => ({
       impCount: impact  > 0 ? s.impCount + 1            : s.impCount,
       gctSum:   gct     > 0 ? s.gctSum   + gct          : s.gctSum,
       gctCount: gct     > 0 ? s.gctCount + 1            : s.gctCount,
+      strikeCode, pronationCode,
+      strikeHeel, strikeMid, strikeFore,
+      pronNeutral, pronOver, pronRigid,
     };
 
     if (s.debugMode) {
+      const strLabel = strike >= 0 ? ['mid','heel','fore'][strike] : '-';
+      const proLabel = pronation >= 0 ? ['neu','over','rig'][pronation] : '-';
       set({ ...base, debugLog: logEntry(s.debugLog,
-        `[FP]  cad=${cadence} imp=${impact.toFixed(2)}G gct=${Math.round(gct)}ms steps=${steps}`) });
+        `[FP]  cad=${cadence} imp=${impact.toFixed(2)}G gct=${Math.round(gct)}ms steps=${steps} str=${strLabel} pro=${proLabel}`) });
     } else {
       set(base);
     }
@@ -397,9 +433,11 @@ export const useRunStore = create<RunState>((set, get) => ({
     if (trigger === 'pace_slow') update.lastSlowCoachTs = now;
     if (trigger === 'pace_fast') update.lastFastCoachTs = now;
     if (trigger === 'low_cad')   update.lastCadCoachTs  = now;
-    if (trigger === 'high_imp')  update.lastImpCoachTs  = now;
-    if (trigger === 'high_fat')  update.lastFatCoachTs  = now;
-    if (trigger === 'z5')        update.lastZ5CoachTs   = now;
+    if (trigger === 'high_imp')    update.lastImpCoachTs    = now;
+    if (trigger === 'high_fat')    update.lastFatCoachTs    = now;
+    if (trigger === 'z5')          update.lastZ5CoachTs     = now;
+    if (trigger === 'heel_strike') update.lastStrikeCoachTs = now;
+    if (trigger === 'overpronation') update.lastPronCoachTs = now;
     if (trigger.startsWith('km_')) {
       update.lastKmCoached = parseInt(trigger.split('_')[1], 10);
     }

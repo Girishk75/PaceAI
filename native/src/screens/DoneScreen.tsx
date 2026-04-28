@@ -6,6 +6,22 @@ import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
 import { saveRun, loadRuns, loadCoachLog, shareCSV } from '../services/storage';
 
+function dominantStrike(heel: number, mid: number, fore: number): string | null {
+  const total = heel + mid + fore;
+  if (total === 0) return null;
+  if (heel >= mid && heel >= fore) return 'heel';
+  if (fore > mid) return 'forefoot';
+  return 'midfoot';
+}
+
+function dominantPronation(neutral: number, over: number, rigid: number): string | null {
+  const total = neutral + over + rigid;
+  if (total === 0) return null;
+  if (over >= neutral && over >= rigid) return 'over';
+  if (rigid > neutral) return 'rigid';
+  return 'neutral';
+}
+
 export function DoneScreen() {
   const s         = useRunStore();
   const setScreen = useRunStore(st => st.setScreen);
@@ -17,8 +33,10 @@ export function DoneScreen() {
   const avgImp  = s.impCount > 0 ? s.impSum / s.impCount               : s.impact;
   const avgGCT  = s.gctCount > 0 ? Math.round(s.gctSum  / s.gctCount)  : s.gct;
 
+  const domStrike = dominantStrike(s.strikeHeel, s.strikeMid, s.strikeFore);
+  const domPron   = dominantPronation(s.pronNeutral, s.pronOver, s.pronRigid);
+
   useEffect(() => {
-    // Persist run record
     saveRun({
       runId:       s.runId,
       runDate:     s.runDate,
@@ -38,6 +56,8 @@ export function DoneScreen() {
       avgGCT,
       avgFatigue:  s.fatigueTotal,
       peakFatigue: s.fatigueTotal,
+      strikePattern:    domStrike   ?? undefined,
+      pronationPattern: domPron     ?? undefined,
     });
   }, []);
 
@@ -58,6 +78,8 @@ export function DoneScreen() {
       impact:      avgImp.toFixed(2),
       gct:         avgGCT,
       fatigue:     s.fatigueTotal.toFixed(2),
+      strike:      domStrike   ?? '',
+      pronation:   domPron     ?? '',
     }];
     await shareCSV(`paceai_run_${s.runId}.csv`, rows as any);
   };
@@ -100,6 +122,12 @@ export function DoneScreen() {
         <View style={st.summaryRow}>
           <Big label="IMPACT"   value={`${avgImp.toFixed(2)} G`} />
         </View>
+        {(domStrike !== null || domPron !== null) && (
+          <View style={st.summaryRow}>
+            <Big label="STRIKE"    value={domStrike ? domStrike.toUpperCase() : '--'} />
+            <Big label="PRONATION" value={domPron   ? domPron.toUpperCase()   : '--'} />
+          </View>
+        )}
         <View style={st.summaryRow}>
           <Big label="FATIGUE"  value={`${s.fatigueTotal.toFixed(1)} / 10`} />
         </View>

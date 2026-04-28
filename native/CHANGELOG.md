@@ -5,6 +5,21 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.0] — 2026-04-28
+
+### Added
+- **Foot strike pattern detection** — firmware v2.3 runs a complementary filter (CF_ALPHA=0.98) tracking ankle pitch at 100 Hz. At Initial Contact the pitch delta vs. calibrated neutral classifies each step as **heel** (>+8°), **forefoot** (<−5°), or **midfoot**. Firmware broadcasts the code as field 5 of the BLE CSV.
+- **Pronation detection** — signed peak roll deviation during GCT_STANCE classifies each stance as **neutral**, **overpronation** (>+8°), or **rigid/supination** (<−6°). Broadcast as field 6 of the BLE CSV.
+- **Backward-compatible BLE parsing** — app handles 4-field packets from old firmware (fields 5/6 default to -1 = unknown). New firmware adds fields 5 and 6; existing 4-field protocol is not changed.
+- **Calibrated neutral angles** — after the 10-second gyro/accel calibration pass the firmware takes 200 additional samples to record neutralPitch/neutralRoll at the ankle's actual mounting angle. CF is seeded to this value so classification deltas are orientation-independent.
+- **Live POD metrics** — STRIKE and PRONATION displayed on LiveRunScreen POD page alongside existing IMPACT/GCT/STEPS/CADENCE metrics. Pronation shows amber when overpronation is detected.
+- **Run summary** — STRIKE and PRONATION cards shown on DoneScreen (only when foot pod data is available). Dominant pattern over the full run is derived from per-type step counts.
+- **CSV export** — `strike` and `pronation` columns added to per-run CSV export.
+- **AI coach triggers** — `heel_strike` fires when >60% of classified steps are heel strikes (every 90 s, after 30 s elapsed); `overpronation` fires when >50% of stances show excessive roll (every 90 s). Both append to coach log.
+- **Run record storage** — `strikePattern` and `pronationPattern` optional fields added to `RunRecord`; old records remain unaffected.
+
+---
+
 ## [2.2.3] — 2026-04-26
 
 ### Fixed
