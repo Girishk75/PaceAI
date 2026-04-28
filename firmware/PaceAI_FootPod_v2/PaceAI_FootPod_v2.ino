@@ -243,7 +243,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
 // ═══════════════════════════════════════════════════════════════════════════
 
 static void calibrate() {
-  Serial.println("PaceAI v2.3 — hold pod still for 10 seconds...");
+  Serial.println("PaceAI v2.3 — hold pod still for ~12 seconds...");
 
   double sumGx = 0, sumGy = 0, sumGz = 0;
   double sumMag = 0, sumMagSq = 0;
