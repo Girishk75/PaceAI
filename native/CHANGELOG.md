@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.1] — 2026-04-29
+
+### Fixed
+- **Duplicate `onDisconnected` callbacks** — Android GATT fires the disconnect callback multiple times on a single drop event. Without a guard, each call incremented the retry backoff counter and scheduled an additional reconnect timer, causing inflated retry delays and log noise (4× "FP disconnected", 2 retries scheduled simultaneously). Added `if (this.fp !== device) return` / `if (this.hr !== device) return` guards so only the first callback acts; subsequent fires are ignored.
+
+---
+
 ## [2.3.0] — 2026-04-28
 
 ### Added

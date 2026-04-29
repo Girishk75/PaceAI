@@ -241,6 +241,7 @@ class BLEService {
     });
 
     device.onDisconnected(() => {
+      if (this.fp !== device) return;  // guard: Android GATT fires this multiple times
       this.clearFPWatchdog();
       this.fp = null;
       log('FP disconnected');
@@ -269,6 +270,7 @@ class BLEService {
     });
 
     device.onDisconnected(() => {
+      if (this.hr !== device) return;  // guard: Android GATT fires this multiple times
       this.hr = null;
       log('HR disconnected');
       useRunStore.getState().setHrConnected(false);
