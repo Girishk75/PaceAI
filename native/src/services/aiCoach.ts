@@ -4,7 +4,7 @@ import { formatPace, formatTime } from '../algorithms/gps';
 import { RUNNER } from '../constants/runner';
 import { RunState } from '../store/runStore';
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 
 // Check if a trigger should fire and build the trigger string.
 // Returns null if conditions not met.
@@ -45,10 +45,22 @@ export function checkTrigger(s: RunState): string | null {
   if (el > 30 && cad > 0 && cad < 165 && (now - s.lastCadCoachTs) > 60000) return 'low_cad';
 
   // Impact (every 90s)
-  if (imp > 2.8 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
+  if (imp > 7.5 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
 
   // Fatigue (every 60s)
   if (fat > 7 && (now - s.lastFatCoachTs) > 60000) return 'high_fat';
+
+  // Heel strike (>60% of classified steps, every 90s, after 30s elapsed)
+  if (el > 30 && s.strikeHeel > 0 && (now - s.lastStrikeCoachTs) > 90000) {
+    const total = s.strikeHeel + s.strikeMid + s.strikeFore;
+    if (total > 0 && s.strikeHeel / total > 0.6) return 'heel_strike';
+  }
+
+  // Overpronation (>50% of classified steps, every 90s, after 30s elapsed)
+  if (el > 30 && s.pronOver > 0 && (now - s.lastPronCoachTs) > 90000) {
+    const total = s.pronNeutral + s.pronOver + s.pronRigid;
+    if (total > 0 && s.pronOver / total > 0.5) return 'overpronation';
+  }
 
   return null;
 }
@@ -58,6 +70,14 @@ function buildPrompt(trigger: string, s: RunState): string {
   const remain = cfg.targetDist > 0 ? Math.max(0, cfg.targetDist - s.dist) : null;
   const diff   = cfg.targetPace > 0 ? s.displayPace - cfg.targetPace : 0;
   const hrPct  = Math.round((s.hr / RUNNER.maxHR) * 100);
+
+  const STRIKE_NAME  = ['midfoot', 'heel', 'forefoot'];
+  const PRON_NAME    = ['neutral', 'overpronation', 'rigid/supination'];
+  const strikeTxt  = s.strikeCode    >= 0 ? STRIKE_NAME[s.strikeCode]  : null;
+  const pronTxt    = s.pronationCode >= 0 ? PRON_NAME[s.pronationCode] : null;
+  const strikeCtx  = strikeTxt
+    ? `\n- Strike pattern: ${strikeTxt} | Pronation: ${pronTxt ?? 'unknown'}`
+    : '';
 
   return `You are a real-time running coach for ${RUNNER.name} in ${RUNNER.location}.
 
@@ -74,7 +94,7 @@ Current run context:
 - Elapsed: ${formatTime(s.elapsedSecs)} | Distance: ${s.dist.toFixed(2)}km${remain !== null ? ` | Remaining: ${remain.toFixed(2)}km` : ''}
 - Pace: ${formatPace(s.displayPace)}/km${diff !== 0 ? ` (${diff > 0 ? '+' : ''}${Math.round(diff)}s vs target)` : ''}
 - HR: ${s.hr}bpm — Zone ${s.hrZone} — ${hrPct}% max HR
-- Cadence: ${s.cadence}spm | GCT: ${s.gct}ms | Impact: ${s.impact.toFixed(2)}G
+- Cadence: ${s.cadence}spm | GCT: ${s.gct}ms | Impact: ${s.impact.toFixed(2)}G${strikeCtx}
 - Fatigue: ${s.fatigueTotal.toFixed(1)}/10 (HR:${s.fatigueHR.toFixed(1)} Cad:${s.fatigueCad.toFixed(1)} GCT:${s.fatigueGCT.toFixed(1)} Imp:${s.fatigueImp.toFixed(1)})
 
 Give a concise, energetic 1–2 sentence coaching cue spoken directly to ${RUNNER.name}.
@@ -161,16 +181,24 @@ export function speak(text: string, onDone?: () => void): void {
   Tts.stop();
 
   if (onDone) {
-    const finishSub = Tts.addEventListener('tts-finish', () => {
+    // Guard against double-call (tts-finish + safety timeout firing close together)
+    let called = false;
+    const done = () => {
+      if (called) return;
+      called = true;
       finishSub.remove();
       errSub.remove();
+      cancelSub.remove();
+      clearTimeout(safety);
       onDone();
-    });
-    const errSub = Tts.addEventListener('tts-error', () => {
-      finishSub.remove();
-      errSub.remove();
-      onDone();
-    });
+    };
+    const finishSub  = Tts.addEventListener('tts-finish', done);
+    const errSub     = Tts.addEventListener('tts-error',  done);
+    // tts-cancel fires when speech is interrupted (phone call, audio focus loss,
+    // Tts.stop() call) — without this handler isSpeaking stays true forever.
+    const cancelSub  = Tts.addEventListener('tts-cancel', done);
+    // Safety net: if no TTS event fires within 30s, reset isSpeaking anyway.
+    const safety     = setTimeout(done, 30_000);
   }
 
   // STREAM_MUSIC routes audio through the music stream so ducking applies

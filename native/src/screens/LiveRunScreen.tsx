@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Dimensions, Animated, NativeSyntheticEvent, NativeScrollEvent,
+  Dimensions, Animated, NativeSyntheticEvent, NativeScrollEvent, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BackgroundTimer from 'react-native-background-timer';
@@ -20,6 +20,8 @@ const { width: W } = Dimensions.get('window');
 const ZONE_COLOR = ['', '#00c8ff', '#00ffa3', '#ffb700', '#ff8c00', '#ff4560'];
 const ZONE_LABEL = ['', 'Recovery', 'Aerobic', 'Tempo', 'Threshold', 'Max'];
 const PAGE_LABELS = ['ESSENTIALS', 'BODY', 'POD', 'COACH'];
+const STRIKE_LABEL   = ['MID', 'HEEL', 'FORE'];
+const PRONATION_LABEL = ['NEUTRAL', 'OVER', 'RIGID'];
 
 export function LiveRunScreen() {
   const s           = useRunStore();
@@ -91,6 +93,17 @@ export function LiveRunScreen() {
     stopSpeech();
     KeepAwake.deactivateKeepAwake();
     pauseRun();
+  };
+
+  const handleEnd = () => {
+    Alert.alert(
+      'End Run?',
+      `${formatTime(s.elapsedSecs)}  ·  ${s.dist.toFixed(2)} km`,
+      [
+        { text: 'Keep Running', style: 'cancel' },
+        { text: 'End Run', style: 'destructive', onPress: () => { stopSpeech(); endRun(); } },
+      ],
+    );
   };
 
   // Predictions
@@ -211,7 +224,7 @@ export function LiveRunScreen() {
           {s.fpConnected ? (
             <>
               <PodMetric label="IMPACT" value={s.impact.toFixed(2)} unit="G"
-                color={s.impact > 2.8 ? C.red : s.impact > 2.4 ? C.warn : C.green}
+                color={s.impact > 8.0 ? C.red : s.impact > 7.0 ? C.warn : C.green}
                 size="large" />
               <View style={st.podRow}>
                 <PodMetric label="GCT" value={`${Math.round(s.gct)}`} unit="ms"
@@ -222,6 +235,14 @@ export function LiveRunScreen() {
               <PodMetric label="CADENCE" value={`${s.cadence}`} unit="spm"
                 color={s.cadence > 0 && s.cadence < 165 ? C.warn : C.green}
                 size="medium" />
+              <View style={st.podRow}>
+                <PodMetric label="STRIKE"
+                  value={s.strikeCode >= 0 ? STRIKE_LABEL[s.strikeCode] : '--'}
+                  unit="" color={C.text} size="medium" />
+                <PodMetric label="PRONATION"
+                  value={s.pronationCode >= 0 ? PRONATION_LABEL[s.pronationCode] : '--'}
+                  unit="" color={s.pronationCode === 1 ? C.warn : C.text} size="medium" />
+              </View>
             </>
           ) : (
             <View style={st.podSim}>
@@ -268,7 +289,7 @@ export function LiveRunScreen() {
         <TouchableOpacity style={[st.btn, st.btnPause]} onPress={handlePause}>
           <Text style={[st.btnTxt, { color: C.warn }]}>⏸  PAUSE</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[st.btn, st.btnEnd]} onPress={endRun}>
+        <TouchableOpacity style={[st.btn, st.btnEnd]} onPress={handleEnd}>
           <Text style={[st.btnTxt, { color: C.red }]}>■  END</Text>
         </TouchableOpacity>
       </View>

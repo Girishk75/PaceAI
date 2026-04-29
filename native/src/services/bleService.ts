@@ -8,9 +8,11 @@ import { useRunStore } from '../store/runStore';
 import { loadSettings } from './storage';
 import { bleManager } from './bleManager';
 
-const SCAN_MS     = 20_000;
-const RETRY_MS    = [2_000, 5_000, 15_000, 30_000];
-const SCAN_GAP_MS = 5_000;   // pause between scan cycles
+const SCAN_MS        = 20_000;   // max scan duration per cycle
+const SCAN_GAP_MS    =  5_000;   // pause between scan cycles
+const CONNECT_TIMEOUT = 10_000;  // max time to establish GATT connection
+const FP_STALE_MS    =  6_000;   // foot pod sends at 1 Hz — >6 s with no packet = silent failure
+const RETRY_MS       = [2_000, 5_000, 15_000, 30_000];
 
 function log(line: string) {
   useRunStore.getState().appendLog(`[BLE] ${line}`);
@@ -22,12 +24,13 @@ class BLEService {
   private fpConnecting = false;
   private hrConnecting = false;
   private scanning     = false;
-  private paused       = false;   // true while Settings screen is open
+  private paused       = false;
   private savedFpId    = '';
   private savedHrId    = '';
   private fpRetry      = 0;
   private hrRetry      = 0;
-  private scanTimer: ReturnType<typeof setTimeout> | null = null;
+  private scanTimer:    ReturnType<typeof setTimeout>   | null = null;
+  private fpWatchdog:   ReturnType<typeof setInterval>  | null = null;
   private ready        = false;
 
   // ── Boot ──────────────────────────────────────────────────────────────────
@@ -40,7 +43,7 @@ class BLEService {
     this.savedFpId = s.fpDeviceId;
     this.savedHrId = s.hrDeviceId;
 
-    // Persistent listener — also handles BT toggled off then back on mid-session
+    // Persistent listener — restarts if BT is toggled off then on mid-session
     bleManager.onStateChange(state => {
       if (state === State.PoweredOn) {
         this.fpRetry = 0;
@@ -51,13 +54,13 @@ class BLEService {
   }
 
   // ── Settings handshake ────────────────────────────────────────────────────
-  // Call pauseForSettings() when SettingsScreen mounts and
-  // resumeAfterSettings() when it unmounts.  Pausing disconnects both devices
-  // so they resume advertising and appear in the Settings BLE scan list.
+  // Pause disconnects both devices so they resume advertising and appear in
+  // the Settings scan list.  Resume reloads saved IDs and restarts auto-connect.
 
   pauseForSettings() {
     this.paused = true;
     this.stopScan('settings opened');
+    this.clearFPWatchdog();
     this.fp?.cancelConnection().catch(() => {});
     this.hr?.cancelConnection().catch(() => {});
     this.fp = null;
@@ -142,7 +145,7 @@ class BLEService {
   private async connectFP(device: Device) {
     log(`FP connecting — ${device.name ?? device.id}`);
     try {
-      const d = await device.connect();
+      const d = await device.connect({ timeout: CONNECT_TIMEOUT });
       await d.discoverAllServicesAndCharacteristics();
       this.onFPConnected(d);
     } catch (e: any) {
@@ -155,7 +158,7 @@ class BLEService {
   private async connectHR(device: Device) {
     log(`HR connecting — ${device.name ?? device.id}`);
     try {
-      const d = await device.connect();
+      const d = await device.connect({ timeout: CONNECT_TIMEOUT });
       await d.discoverAllServicesAndCharacteristics();
       this.onHRConnected(d);
     } catch (e: any) {
@@ -166,15 +169,13 @@ class BLEService {
   }
 
   // ── Direct reconnect by saved device ID (no scan needed) ─────────────────
-  // On Android, connectToDevice() by MAC address works without prior scanning.
-  // This is the fast path used after a disconnect — avoids a full 20-second scan.
 
   private async reconnectFP() {
     if (this.fpConnecting || this.fp || this.paused) return;
     this.fpConnecting = true;
     log(`FP reconnecting directly …${this.savedFpId.slice(-6)}`);
     try {
-      const d = await bleManager.connectToDevice(this.savedFpId, { timeout: 10_000 });
+      const d = await bleManager.connectToDevice(this.savedFpId, { timeout: CONNECT_TIMEOUT });
       await d.discoverAllServicesAndCharacteristics();
       this.onFPConnected(d);
     } catch (e: any) {
@@ -189,7 +190,7 @@ class BLEService {
     this.hrConnecting = true;
     log(`HR reconnecting directly …${this.savedHrId.slice(-6)}`);
     try {
-      const d = await bleManager.connectToDevice(this.savedHrId, { timeout: 10_000 });
+      const d = await bleManager.connectToDevice(this.savedHrId, { timeout: CONNECT_TIMEOUT });
       await d.discoverAllServicesAndCharacteristics();
       this.onHRConnected(d);
     } catch (e: any) {
@@ -208,19 +209,40 @@ class BLEService {
     log(`FP connected ✓  ${device.name ?? device.id}`);
     useRunStore.getState().setFpConnected(true);
 
+    // Data watchdog — foot pod sends at 1 Hz.  If >6 s pass with no packet
+    // while the GATT link appears up, the subscription has silently died;
+    // force a disconnect so the normal retry cycle re-establishes it.
+    this.startFPWatchdog(device);
+
     device.monitorCharacteristicForService(FOOT_POD_SERVICE, FOOT_POD_CHAR, (err, char) => {
-      if (err || !char?.value) return;
-      const csv = Buffer.from(char.value, 'base64').toString('utf8');
-      const [cad, imp, gct, steps] = csv.split(',');
+      if (err) {
+        // Monitor errors that aren't caused by a normal disconnect (which
+        // already fires onDisconnected) need an explicit recovery kick.
+        log(`FP monitor error: ${err.message}`);
+        device.cancelConnection().catch(() => {});
+        return;
+      }
+      if (!char?.value) return;
+      const csv   = Buffer.from(char.value, 'base64').toString('utf8');
+      const parts = csv.split(',');
+      const [cad, imp, gct, steps] = parts;
+      // Fields 5+6 are strike/pronation codes from v2.3 firmware.
+      // Old firmware sends only 4 fields — treat missing as -1 (unknown).
+      const strikeRaw = parts[4] !== undefined ? parseInt(parts[4], 10) : -1;
+      const pronRaw   = parts[5] !== undefined ? parseInt(parts[5], 10) : -1;
       useRunStore.getState().updateFootPod(
-        parseFloat(cad)   || 0,
-        parseFloat(imp)   || 0,
-        parseFloat(gct)   || 0,
+        parseFloat(cad)     || 0,
+        parseFloat(imp)     || 0,
+        parseFloat(gct)     || 0,
         parseInt(steps, 10) || 0,
+        isNaN(strikeRaw) ? -1 : strikeRaw,
+        isNaN(pronRaw)   ? -1 : pronRaw,
       );
     });
 
     device.onDisconnected(() => {
+      if (this.fp !== device) return;  // guard: Android GATT fires this multiple times
+      this.clearFPWatchdog();
       this.fp = null;
       log('FP disconnected');
       useRunStore.getState().setFpConnected(false);
@@ -236,18 +258,48 @@ class BLEService {
     useRunStore.getState().setHrConnected(true);
 
     device.monitorCharacteristicForService(HR_SERVICE, HR_MEASUREMENT_CHAR, (err, char) => {
-      if (err || !char?.value) return;
+      if (err) {
+        log(`HR monitor error: ${err.message}`);
+        device.cancelConnection().catch(() => {});
+        return;
+      }
+      if (!char?.value) return;
       const bytes = Buffer.from(char.value, 'base64');
       const hr = (bytes[0] & 0x01) ? (bytes[2] << 8 | bytes[1]) : bytes[1];
       if (hr > 30 && hr < 230) useRunStore.getState().updateHR(hr);
     });
 
     device.onDisconnected(() => {
+      if (this.hr !== device) return;  // guard: Android GATT fires this multiple times
       this.hr = null;
       log('HR disconnected');
       useRunStore.getState().setHrConnected(false);
       if (!this.paused) this.scheduleHRRetry();
     });
+  }
+
+  // ── Foot pod data watchdog ────────────────────────────────────────────────
+  // The ESP32 sends a BLE notification every ~1 s.  If lastFpPacketTs goes
+  // stale while fpConnected=true, the GATT subscription has silently died.
+  // Force a cancelConnection so onDisconnected fires and the retry cycle runs.
+
+  private startFPWatchdog(device: Device) {
+    this.clearFPWatchdog();
+    this.fpWatchdog = setInterval(() => {
+      if (this.fp !== device) { this.clearFPWatchdog(); return; }
+      const { lastFpPacketTs, fpConnected } = useRunStore.getState();
+      if (!fpConnected || lastFpPacketTs === 0) return;  // not yet streaming
+      const age = Date.now() - lastFpPacketTs;
+      if (age > FP_STALE_MS) {
+        log(`FP data stale ${(age / 1000).toFixed(0)}s — forcing reconnect`);
+        this.clearFPWatchdog();
+        device.cancelConnection().catch(() => {});
+      }
+    }, 3_000);
+  }
+
+  private clearFPWatchdog() {
+    if (this.fpWatchdog) { clearInterval(this.fpWatchdog); this.fpWatchdog = null; }
   }
 
   // ── Retry scheduling (exponential backoff) ────────────────────────────────
@@ -258,7 +310,6 @@ class BLEService {
     log(`FP retry in ${delay / 1000}s (attempt ${this.fpRetry})`);
     setTimeout(() => {
       if (this.paused || this.fp || this.fpConnecting) return;
-      // Prefer direct reconnect (fast); fall back to scan if no saved ID
       if (this.savedFpId) this.reconnectFP();
       else this.startScan();
     }, delay);

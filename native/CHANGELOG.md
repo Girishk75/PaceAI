@@ -5,6 +5,56 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.1] — 2026-04-29
+
+### Fixed
+- **Duplicate `onDisconnected` callbacks** — Android GATT fires the disconnect callback multiple times on a single drop event. Without a guard, each call incremented the retry backoff counter and scheduled an additional reconnect timer, causing inflated retry delays and log noise (4× "FP disconnected", 2 retries scheduled simultaneously). Added `if (this.fp !== device) return` / `if (this.hr !== device) return` guards so only the first callback acts; subsequent fires are ignored.
+
+---
+
+## [2.3.0] — 2026-04-28
+
+### Added
+- **Foot strike pattern detection** — firmware v2.3 runs a complementary filter (CF_ALPHA=0.98) tracking ankle pitch at 100 Hz. At Initial Contact the pitch delta vs. calibrated neutral classifies each step as **heel** (>+8°), **forefoot** (<−5°), or **midfoot**. Firmware broadcasts the code as field 5 of the BLE CSV.
+- **Pronation detection** — signed peak roll deviation during GCT_STANCE classifies each stance as **neutral**, **overpronation** (>+8°), or **rigid/supination** (<−6°). Broadcast as field 6 of the BLE CSV.
+- **Backward-compatible BLE parsing** — app handles 4-field packets from old firmware (fields 5/6 default to -1 = unknown). New firmware adds fields 5 and 6; existing 4-field protocol is not changed.
+- **Calibrated neutral angles** — after the 10-second gyro/accel calibration pass the firmware takes 200 additional samples to record neutralPitch/neutralRoll at the ankle's actual mounting angle. CF is seeded to this value so classification deltas are orientation-independent.
+- **Live POD metrics** — STRIKE and PRONATION displayed on LiveRunScreen POD page alongside existing IMPACT/GCT/STEPS/CADENCE metrics. Pronation shows amber when overpronation is detected.
+- **Run summary** — STRIKE and PRONATION cards shown on DoneScreen (only when foot pod data is available). Dominant pattern over the full run is derived from per-type step counts.
+- **CSV export** — `strike` and `pronation` columns added to per-run CSV export.
+- **AI coach triggers** — `heel_strike` fires when >60% of classified steps are heel strikes (every 90 s, after 30 s elapsed); `overpronation` fires when >50% of stances show excessive roll (every 90 s). Both append to coach log.
+- **Run record storage** — `strikePattern` and `pronationPattern` optional fields added to `RunRecord`; old records remain unaffected.
+
+---
+
+## [2.2.3] — 2026-04-26
+
+### Fixed
+- **Impact thresholds miscalibrated for rolling average** — v2.2.2 added a 4-value rolling average that produces ~5.8 G (average of ~9 G footstrike and ~2.7 G swing). The old thresholds (base 2.1 G, coach trigger > 2.8 G, UI red > 2.8 G) meant the impact gauge was permanently red and the high-impact coach fired every 90 s regardless of actual form. Updated: `RUNNER.baseImpact` 2.1 → 5.5, fatigue baseline 2.1 → 5.5, coach trigger > 7.5 G, UI red > 8.0 G / warn > 7.0 G.
+- **Run summary saves snapshot values, not true averages** — `avgHR`, `avgCadence`, `avgImpact`, `avgGCT`, and `avgPace` all previously saved the last store value at the moment END was tapped (e.g. HR showed 122 bpm when the Garmin recorded a 148 bpm average). Added per-packet accumulators (`hrSum/hrCount`, `cadSum/cadCount`, `impSum/impCount`, `gctSum/gctCount`) to the store, reset at run start, divided at run end for true means. `avgPace` now computed as `elapsedSecs / dist` instead of last instant pace.
+- **maxHR always equalled avgHR** — both fields saved the same last-packet value. `maxHR` is now tracked as a running maximum throughout the run.
+- **Fatigue cadence input always 170** — `s.cadence || s.runConfig.targetPace ? 170 : 170` (operator-precedence bug) always evaluated to 170, ignoring the real cadence. Fixed to `s.cadence || 170`.
+
+---
+
+## [2.2.2] — 2026-04-26
+
+### Fixed
+- **AI coach fires only once per run** — `speak()` had no `tts-cancel` handler. Any audio interruption (phone call, notification, OS audio focus preemption) cancelled TTS without calling `onDone()`, leaving `isSpeaking=true` permanently and silently blocking every subsequent 2-min check-in and trigger for the rest of the run. Fixed: `tts-cancel` now calls `done()` just like `tts-finish` and `tts-error`. Added a 30 s safety timeout as a final fallback.
+- **Cadence reads ~360 spm instead of ~180** — `updateFootPod` was doing `cad * 2` on a value the firmware already sends as total spm (both feet). Step-count analysis confirms 3 steps/sec = 180 spm total; the doubling was wrong. Removed the `* 2`.
+- **Impact alternates 9 G / 2.7 G every second** — the ESP32 sends one reading per step, alternating between the footstrike peak (~9 G) and the swing/recovery phase (~2.7 G). Added a 4-value rolling average (`impBuffer`) so the display and coach see a stable ~5–6 G rather than wild swings.
+- **Accidental END ends the run silently** — tapping END now shows a confirmation alert ("End Run? 1:37:17 · 13.32 km") with a "Keep Running" cancel option, preventing the accidental mid-run termination seen in today's run data.
+
+### Changed
+- **AI Coach model updated** to `claude-sonnet-4-6` (latest).
+
+## [2.2.1] — 2026-04-25
+
+### Fixed
+- **Explicit connect timeout** — scan-based `connect()` now has a 10 s timeout (previously could hang indefinitely if the device stopped responding mid-handshake).
+- **Monitor error → forced reconnect** — if the GATT characteristic subscription dies for any reason (BLE stack error, Android GATT error 133, etc.) the error handler now calls `cancelConnection()` to guarantee `onDisconnected` fires and the normal retry cycle kicks in. Previously the error was logged and ignored, leaving the device in a "connected but no data" limbo.
+- **Foot pod data watchdog** — a 3 s interval checks `lastFpPacketTs` while FP is connected. If no packet has arrived for 6 s (the ESP32 sends at 1 Hz) the watchdog forces a disconnect so the retry cycle re-establishes the subscription. Catches silent GATT subscription failures that keep `fpConnected=true` while data has stopped.
+
 ## [2.2.0] — 2026-04-24
 
 ### Changed

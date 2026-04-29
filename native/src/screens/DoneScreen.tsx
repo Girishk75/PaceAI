@@ -6,12 +6,37 @@ import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
 import { saveRun, loadRuns, loadCoachLog, shareCSV } from '../services/storage';
 
+function dominantStrike(heel: number, mid: number, fore: number): string | null {
+  const total = heel + mid + fore;
+  if (total === 0) return null;
+  if (heel >= mid && heel >= fore) return 'heel';
+  if (fore > mid) return 'forefoot';
+  return 'midfoot';
+}
+
+function dominantPronation(neutral: number, over: number, rigid: number): string | null {
+  const total = neutral + over + rigid;
+  if (total === 0) return null;
+  if (over >= neutral && over >= rigid) return 'over';
+  if (rigid > neutral) return 'rigid';
+  return 'neutral';
+}
+
 export function DoneScreen() {
   const s         = useRunStore();
   const setScreen = useRunStore(st => st.setScreen);
 
+  const avgPace = s.dist > 0 ? Math.round(s.elapsedSecs / s.dist) : s.displayPace;
+  const avgHR   = s.hrCount  > 0 ? Math.round(s.hrSum  / s.hrCount)  : s.hr;
+  const peakHR  = s.maxHR || s.hr;
+  const avgCad  = s.cadCount > 0 ? Math.round(s.cadSum  / s.cadCount) : s.cadence;
+  const avgImp  = s.impCount > 0 ? s.impSum / s.impCount               : s.impact;
+  const avgGCT  = s.gctCount > 0 ? Math.round(s.gctSum  / s.gctCount)  : s.gct;
+
+  const domStrike = dominantStrike(s.strikeHeel, s.strikeMid, s.strikeFore);
+  const domPron   = dominantPronation(s.pronNeutral, s.pronOver, s.pronRigid);
+
   useEffect(() => {
-    // Persist run record
     saveRun({
       runId:       s.runId,
       runDate:     s.runDate,
@@ -22,15 +47,17 @@ export function DoneScreen() {
       targetPace:  s.runConfig.targetPace,
       elapsedSecs: s.elapsedSecs,
       distKm:      s.dist,
-      avgPace:     s.displayPace,
-      avgHR:       s.hr,
-      maxHR:       s.hr,
+      avgPace,
+      avgHR,
+      maxHR:       peakHR,
       steps:       s.steps,
-      avgCadence:  s.cadence,
-      avgImpact:   s.impact,
-      avgGCT:      s.gct,
+      avgCadence:  avgCad,
+      avgImpact:   avgImp,
+      avgGCT,
       avgFatigue:  s.fatigueTotal,
       peakFatigue: s.fatigueTotal,
+      strikePattern:    domStrike   ?? undefined,
+      pronationPattern: domPron     ?? undefined,
     });
   }, []);
 
@@ -43,13 +70,16 @@ export function DoneScreen() {
       weather:     s.runConfig.weather,
       distKm:      s.dist.toFixed(3),
       duration:    formatTime(s.elapsedSecs),
-      avgPace:     formatPace(s.displayPace),
-      avgHR:       s.hr,
-      cadence:     s.cadence,
+      avgPace:     formatPace(avgPace),
+      avgHR,
+      maxHR:       peakHR,
+      cadence:     avgCad,
       steps:       s.steps,
-      impact:      s.impact.toFixed(2),
-      gct:         s.gct,
+      impact:      avgImp.toFixed(2),
+      gct:         avgGCT,
       fatigue:     s.fatigueTotal.toFixed(2),
+      strike:      domStrike   ?? '',
+      pronation:   domPron     ?? '',
     }];
     await shareCSV(`paceai_run_${s.runId}.csv`, rows as any);
   };
@@ -78,17 +108,26 @@ export function DoneScreen() {
           <Big label="DIST"  value={`${s.dist.toFixed(2)} km`} />
         </View>
         <View style={st.summaryRow}>
-          <Big label="AVG PACE" value={formatPace(s.displayPace)} unit="/km" />
-          <Big label="AVG HR"   value={`${s.hr || '--'} bpm`} />
+          <Big label="AVG PACE" value={formatPace(avgPace)} unit="/km" />
+          <Big label="AVG HR"   value={`${avgHR || '--'} bpm`} />
+        </View>
+        <View style={st.summaryRow}>
+          <Big label="MAX HR"   value={`${peakHR || '--'} bpm`} />
+          <Big label="CADENCE"  value={`${avgCad || '--'} spm`} />
         </View>
         <View style={st.summaryRow}>
           <Big label="STEPS"    value={`${s.steps}`} />
-          <Big label="CADENCE"  value={`${s.cadence || '--'} spm`} />
+          <Big label="GCT"      value={`${avgGCT || '--'} ms`} />
         </View>
         <View style={st.summaryRow}>
-          <Big label="IMPACT"   value={`${s.impact.toFixed(2)} G`} />
-          <Big label="GCT"      value={`${s.gct || '--'} ms`} />
+          <Big label="IMPACT"   value={`${avgImp.toFixed(2)} G`} />
         </View>
+        {(domStrike !== null || domPron !== null) && (
+          <View style={st.summaryRow}>
+            <Big label="STRIKE"    value={domStrike ? domStrike.toUpperCase() : '--'} />
+            <Big label="PRONATION" value={domPron   ? domPron.toUpperCase()   : '--'} />
+          </View>
+        )}
         <View style={st.summaryRow}>
           <Big label="FATIGUE"  value={`${s.fatigueTotal.toFixed(1)} / 10`} />
         </View>

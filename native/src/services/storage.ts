@@ -25,8 +25,10 @@ export interface RunRecord {
   avgCadence:  number;
   avgImpact:   number;
   avgGCT:      number;
-  avgFatigue:  number;
-  peakFatigue: number;
+  avgFatigue:      number;
+  peakFatigue:     number;
+  strikePattern?:  string;  // dominant: 'heel' | 'midfoot' | 'forefoot'
+  pronationPattern?: string; // dominant: 'neutral' | 'over' | 'rigid'
 }
 
 export async function saveRun(rec: RunRecord): Promise<void> {
