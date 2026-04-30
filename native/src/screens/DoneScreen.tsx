@@ -6,26 +6,23 @@ import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
 import { saveRun, loadRuns, loadCoachLog, shareCSV } from '../services/storage';
 
+// Minimum BLE packets classified before committing to a dominant label (~10 s at 1 Hz).
+const MIN_CLASSIFIED_SAMPLES = 10;
+
 function dominantStrike(heel: number, mid: number, fore: number): string | null {
-  const total = heel + mid + fore;
-  if (total < 10) return null;  // require minimum sample count
+  if (heel + mid + fore < MIN_CLASSIFIED_SAMPLES) return null;
   const max = Math.max(heel, mid, fore);
-  // tie → benign (midfoot); require clear plurality to label a pathological pattern
-  if (mid === max) return 'midfoot';
+  if (mid  === max) return 'midfoot';   // tie-break to benign
   if (fore === max) return 'forefoot';
-  if (heel === max) return 'heel';
-  return 'midfoot';
+  return 'heel';
 }
 
 function dominantPronation(neutral: number, over: number, rigid: number): string | null {
-  const total = neutral + over + rigid;
-  if (total < 10) return null;  // require minimum sample count
+  if (neutral + over + rigid < MIN_CLASSIFIED_SAMPLES) return null;
   const max = Math.max(neutral, over, rigid);
-  // tie → benign (neutral); require clear plurality to label a pathological pattern
-  if (neutral === max) return 'neutral';
-  if (rigid === max) return 'rigid';
-  if (over === max) return 'over';
-  return 'neutral';
+  if (neutral === max) return 'neutral'; // tie-break to benign
+  if (rigid   === max) return 'rigid';
+  return 'over';
 }
 
 export function DoneScreen() {

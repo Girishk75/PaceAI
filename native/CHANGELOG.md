@@ -12,6 +12,7 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 - **Asymmetric tie-breaking in dominant strike/pronation** — `dominantStrike` and `dominantPronation` previously broke ties toward the pathological type (heel, over). Ties now resolve to the benign type (midfoot, neutral). Both functions also require a minimum of 10 classified samples before returning a non-null label, preventing early-run noise from driving the stored pattern.
 - **`az_safe` sign flip at singularity** — `copysignf(0.01f, s.az)` replaces the literal `0.01f` so the clamp preserves the sign of `az` when approaching the ±90° gimbal singularity (low practical risk but correct behaviour).
 - **Placeholder text omits new metrics** — "to see impact, GCT and steps" updated to mention strike and pronation.
+- **Dead-code fallthrough in dominant-type helpers** — final unreachable `return` statements removed from `dominantStrike`/`dominantPronation`; minimum sample threshold extracted as `MIN_CLASSIFIED_SAMPLES = 10` constant.
 
 ### Changed
 - Strike/pronation packet-count comment clarified: counters increment per BLE packet (~1 Hz), not per step (~3/s); ratios are valid but raw counts are not step counts.
