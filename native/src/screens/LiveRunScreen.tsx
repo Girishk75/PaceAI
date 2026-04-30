@@ -249,7 +249,7 @@ export function LiveRunScreen() {
               <Text style={st.podSimIcon}>⚡</Text>
               <Text style={st.podSimTitle}>FOOT POD NOT CONNECTED</Text>
               <Text style={st.podSimSub}>Connect PaceAI-FootPod via BLE</Text>
-              <Text style={st.podSimSub}>to see impact, GCT and steps</Text>
+              <Text style={st.podSimSub}>to see impact, GCT, steps, strike and pronation</Text>
             </View>
           )}
         </View>

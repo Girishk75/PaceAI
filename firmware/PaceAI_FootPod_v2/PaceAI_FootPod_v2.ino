@@ -222,7 +222,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
   // Accel-based angles — drift-free long-term reference for the CF.
   // atan2(ax, az) = sagittal pitch; atan2(ay, az) = frontal roll.
   // Clamp az to avoid instability when near ±90°.
-  float az_safe    = (fabsf(s.az) < 0.01f) ? 0.01f : s.az;
+  float az_safe    = (fabsf(s.az) < 0.01f) ? copysignf(0.01f, s.az) : s.az;
   s.accelPitch     = atan2f(s.ax, az_safe) * (180.0f / M_PI);
   s.accelRoll      = atan2f(s.ay, az_safe) * (180.0f / M_PI);
   return s;
@@ -412,6 +412,8 @@ static void processSample(const Imu &s) {
 
     case GCT_STANCE:
       // Foot on ground — track peak roll deviation for pronation, wait for toe-off
+      // Note: lastPronation is classified at toe-off, lastStrike at IC — they may
+      // refer to different step cycles if a packet is broadcast between the two events.
       {
         float rollDelta = cfRoll - neutralRoll;
         if (fabsf(rollDelta) > fabsf(peakRollDelta)) peakRollDelta = rollDelta;

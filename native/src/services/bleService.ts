@@ -228,15 +228,18 @@ class BLEService {
       const [cad, imp, gct, steps] = parts;
       // Fields 5+6 are strike/pronation codes from v2.3 firmware.
       // Old firmware sends only 4 fields — treat missing as -1 (unknown).
+      // Clamp to valid firmware range {0,1,2} to guard against corrupt packets.
       const strikeRaw = parts[4] !== undefined ? parseInt(parts[4], 10) : -1;
       const pronRaw   = parts[5] !== undefined ? parseInt(parts[5], 10) : -1;
+      const strikeSafe = (!isNaN(strikeRaw) && strikeRaw >= 0 && strikeRaw <= 2) ? strikeRaw : -1;
+      const pronSafe   = (!isNaN(pronRaw)   && pronRaw   >= 0 && pronRaw   <= 2) ? pronRaw   : -1;
       useRunStore.getState().updateFootPod(
         parseFloat(cad)     || 0,
         parseFloat(imp)     || 0,
         parseFloat(gct)     || 0,
         parseInt(steps, 10) || 0,
-        isNaN(strikeRaw) ? -1 : strikeRaw,
-        isNaN(pronRaw)   ? -1 : pronRaw,
+        strikeSafe,
+        pronSafe,
       );
     });
 

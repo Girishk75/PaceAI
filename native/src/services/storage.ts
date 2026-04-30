@@ -27,8 +27,8 @@ export interface RunRecord {
   avgGCT:      number;
   avgFatigue:      number;
   peakFatigue:     number;
-  strikePattern?:  string;  // dominant: 'heel' | 'midfoot' | 'forefoot'
-  pronationPattern?: string; // dominant: 'neutral' | 'over' | 'rigid'
+  strikePattern?:  string;  // dominant: 'heel' | 'midfoot' | 'forefoot'  (terse; aiCoach expands for LLM)
+  pronationPattern?: string; // dominant: 'neutral' | 'over' | 'rigid'    (terse; aiCoach uses 'overpronation' in prompt)
 }
 
 export async function saveRun(rec: RunRecord): Promise<void> {

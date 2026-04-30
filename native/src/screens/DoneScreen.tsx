@@ -8,17 +8,23 @@ import { saveRun, loadRuns, loadCoachLog, shareCSV } from '../services/storage';
 
 function dominantStrike(heel: number, mid: number, fore: number): string | null {
   const total = heel + mid + fore;
-  if (total === 0) return null;
-  if (heel >= mid && heel >= fore) return 'heel';
-  if (fore > mid) return 'forefoot';
+  if (total < 10) return null;  // require minimum sample count
+  const max = Math.max(heel, mid, fore);
+  // tie → benign (midfoot); require clear plurality to label a pathological pattern
+  if (mid === max) return 'midfoot';
+  if (fore === max) return 'forefoot';
+  if (heel === max) return 'heel';
   return 'midfoot';
 }
 
 function dominantPronation(neutral: number, over: number, rigid: number): string | null {
   const total = neutral + over + rigid;
-  if (total === 0) return null;
-  if (over >= neutral && over >= rigid) return 'over';
-  if (rigid > neutral) return 'rigid';
+  if (total < 10) return null;  // require minimum sample count
+  const max = Math.max(neutral, over, rigid);
+  // tie → benign (neutral); require clear plurality to label a pathological pattern
+  if (neutral === max) return 'neutral';
+  if (rigid === max) return 'rigid';
+  if (over === max) return 'over';
   return 'neutral';
 }
 

@@ -359,7 +359,9 @@ export const useRunStore = create<RunState>((set, get) => ({
     const offset  = s.fpStepsOffset < 0 ? rawSteps : s.fpStepsOffset;
     const steps   = Math.max(0, rawSteps - offset);
 
-    // Strike / pronation — update most-recent code and per-type counts
+    // Strike / pronation — update most-recent code and per-BLE-packet type counts
+    // Note: counts increment once per ~1 Hz packet, not once per step (~3/s at 180 spm).
+    // Ratios (used for dominant-type and coach triggers) are still valid; raw counts are not step counts.
     const strikeCode    = strike    >= 0 ? strike    : s.strikeCode;
     const pronationCode = pronation >= 0 ? pronation : s.pronationCode;
     const strikeHeel  = s.strikeHeel  + (strike === 1 ? 1 : 0);
@@ -390,6 +392,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     };
 
     if (s.debugMode) {
+      // Index order matches firmware codes: 0=midfoot, 1=heel, 2=forefoot / 0=neutral, 1=over, 2=rigid
       const strLabel = strike >= 0 ? ['mid','heel','fore'][strike] : '-';
       const proLabel = pronation >= 0 ? ['neu','over','rig'][pronation] : '-';
       set({ ...base, debugLog: logEntry(s.debugLog,
