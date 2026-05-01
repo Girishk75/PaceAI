@@ -10,6 +10,7 @@ import { useRunStore } from '../store/runStore';
 import { bleManager } from '../services/bleManager';
 import { bleService } from '../services/bleService';
 import { loadSettings, saveSettings } from '../services/storage';
+import { FOOT_POD_SERVICE, HR_SERVICE } from '../constants/ble';
 import { C, F } from '../theme';
 
 type ScannedDevice = { id: string; name: string; rssi: number };
@@ -65,11 +66,16 @@ export function SettingsScreen() {
     setScannedDevices([]);
     setScanTarget(target);
 
-    bleManager.startDeviceScan(null, { allowDuplicates: false }, (err, device) => {
-      if (err || !device || !device.name) return;
+    // Filter by service UUID so the foot pod is found even when its name is only
+    // in the scan-response packet (which Android sometimes skips).  The service
+    // UUID is always in the advertisement packet itself.
+    const serviceFilter = target === 'fp' ? [FOOT_POD_SERVICE] : [HR_SERVICE];
+    bleManager.startDeviceScan(serviceFilter, { allowDuplicates: false }, (err, device) => {
+      if (err || !device) return;
+      const name = device.name || 'Unknown Device';
       foundRef.current.set(device.id, {
         id:   device.id,
-        name: device.name,
+        name,
         rssi: device.rssi ?? -99,
       });
       setScannedDevices([...foundRef.current.values()].sort((a, b) => b.rssi - a.rssi));

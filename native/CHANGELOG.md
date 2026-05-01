@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.3] — 2026-05-01
+
+### Fixed
+- **Foot pod not appearing in Settings scan** — The ESP32 puts its device name in the BLE scan-response packet, not the advertisement packet. Android sometimes skips the scan-response, so `device.name` arrived as `null` and the `!device.name` filter silently dropped the foot pod from the results. Fixed by passing `[FOOT_POD_SERVICE]` as the service UUID filter when scanning for the foot pod (and `[HR_SERVICE]` for HR) — service UUIDs are always in the advertisement packet and are unaffected by the scan-response issue. Also softened the name filter from a hard drop to a fallback `'Unknown Device'` label.
+
+---
+
 ## [2.3.2] — 2026-04-30
 
 ### Fixed
