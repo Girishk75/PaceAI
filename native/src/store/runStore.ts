@@ -269,7 +269,9 @@ export const useRunStore = create<RunState>((set, get) => ({
     if (!s.running) return;
 
     const now = Date.now();
-    const elapsed = s.elapsedSecs + 1;
+    // Wall-clock elapsed — safe to call from multiple sources (GPS task + BackgroundTimer).
+    // Using Date.now()-startTs means irregular or duplicated calls never drift or double-count.
+    const elapsed = Math.round((now - s.startTs) / 1000);
 
     // GPS staleness (15s without update)
     const stale = s.gpsPace > 0 && (now - s.gpsPaceTs) > 15000;

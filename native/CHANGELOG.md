@@ -5,6 +5,17 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.4] — 2026-05-02
+
+### Fixed
+- **Run timer and coach completely stopped when screen locked** — Android's Doze mode and OEM battery optimization throttle the JS thread's `BackgroundTimer` when the phone screen is off (e.g. in a pocket during a long run). The `tick()` call in `BackgroundTimer.setInterval` froze `elapsedSecs`, which in turn prevented every coach trigger (`el > 30`, `el > 60`, etc.) and distance milestones from ever firing. Result: coach log showed only the 3-second `run_start` entry for a 107-minute, 14 km run.
+
+  Fix — two changes:
+  1. `tick()` now computes elapsed as `Math.round((Date.now() - startTs) / 1000)` (wall-clock) instead of incrementing by 1 per call. This makes it safe to call from multiple sources and means irregular or skipped calls never cause drift or double-counting.
+  2. `tick()` is now also called from inside the GPS background `TaskManager` task. The GPS foreground service is battery-optimization exempt and survives screen lock, so it serves as a reliable timer driver even when `BackgroundTimer` is throttled. `BackgroundTimer` is kept as a backup for when GPS is unavailable (tunnel, indoor).
+
+---
+
 ## [2.3.3] — 2026-05-01
 
 ### Fixed
