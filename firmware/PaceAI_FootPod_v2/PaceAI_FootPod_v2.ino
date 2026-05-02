@@ -275,11 +275,18 @@ static void calibrate() {
   }
 
   if (good < 100) {
-    Serial.println("ERROR: fewer than 100 good samples — check I2C wiring");
-    while (true) {
-      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-      delay(200);
-    }
+    // Poor I2C signal — likely a power supply issue (running on battery with low current).
+    // Use safe defaults and continue to bleSetup() rather than hanging.
+    // The pod will advertise in degraded mode; impact/strike/pronation accuracy is reduced.
+    Serial.println("WARNING: poor calibration (<100 good samples) — using defaults. Check battery/power.");
+    gyroOff[0]   = 0.0f; gyroOff[1] = 0.0f; gyroOff[2] = 0.0f;
+    impactThresh = fmaxf(MIN_IMPACT_G * 1.5f, MIN_IMPACT_G);
+    exitThresh   = impactThresh * IMPACT_EXIT_R;
+    neutralPitch = 0.0f; neutralRoll = 0.0f;
+    cfPitch      = 0.0f; cfRoll      = 0.0f;
+    calDone      = true;
+    digitalWrite(LED_PIN, HIGH);
+    return;
   }
 
   // Gyro DC offsets (raw int16 units — subtracted before scaling in mpuToImu)
