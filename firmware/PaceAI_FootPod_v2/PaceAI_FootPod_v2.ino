@@ -42,6 +42,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <esp_bt.h>
 #include <math.h>
 
 // ── BLE — DO NOT CHANGE (must match app) ───────────────────────────────────
@@ -462,6 +463,15 @@ class BLECBs : public BLEServerCallbacks {
 
 static void bleSetup() {
   BLEDevice::init(DEVICE_NAME);
+
+  // Reduce TX power from default +9 dBm to -6 dBm.
+  // Default draws ~100-150 mA peak — too much for a small LiPo on battery alone,
+  // causing voltage sag that prevents BLE from starting.
+  // At -6 dBm the pod still reaches 3-5 m indoors, more than enough for ankle → phone.
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV,      ESP_PWR_LVL_N6);
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT,   ESP_PWR_LVL_N6);
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_CONN_HDL0, ESP_PWR_LVL_N6);
+
   BLEServer  *srv = BLEDevice::createServer();
   srv->setCallbacks(new BLECBs());
 
@@ -476,7 +486,8 @@ static void bleSetup() {
   BLEAdvertising *adv = BLEDevice::getAdvertising();
   adv->addServiceUUID(SERVICE_UUID);
   adv->setScanResponse(true);
-  adv->setMinPreferred(0x06);   // helps iPhone discover faster
+  adv->setMinInterval(160);  // 160 × 0.625 ms = 100 ms — reduces TX duty cycle on battery
+  adv->setMaxInterval(320);  // 320 × 0.625 ms = 200 ms
   BLEDevice::startAdvertising();
 }
 
