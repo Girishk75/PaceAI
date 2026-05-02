@@ -11,6 +11,7 @@ import { bleManager } from '../services/bleManager';
 import { bleService } from '../services/bleService';
 import { loadSettings, saveSettings } from '../services/storage';
 import { FOOT_POD_SERVICE, HR_SERVICE } from '../constants/ble';
+import { shareLastDebugLog } from '../services/debugLogFile';
 import { C, F } from '../theme';
 
 type ScannedDevice = { id: string; name: string; rssi: number };
@@ -254,6 +255,10 @@ export function SettingsScreen() {
               thumbColor={localDebug ? C.green : C.muted}
             />
           </View>
+          <TouchableOpacity style={st.scanBtn} onPress={shareLastDebugLog}>
+            <Text style={st.scanTxt}>SHARE LAST DEBUG LOG</Text>
+          </TouchableOpacity>
+          <Text style={st.hint}>Log is auto-saved every 30 s during a run and remains available after the run ends.</Text>
         </View>
 
         <View style={st.about}>

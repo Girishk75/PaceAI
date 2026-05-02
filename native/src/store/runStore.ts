@@ -3,6 +3,7 @@ import { RunType, Weather, RUNNER } from '../constants/runner';
 import { calcFatigue } from '../algorithms/fatigue';
 import { formatTime } from '../algorithms/gps';
 import { getHRZone, simHR } from '../algorithms/hrZone';
+import { addDebugLine } from '../services/debugLogFile';
 
 export type Screen = 'setup' | 'live' | 'paused' | 'done' | 'history' | 'settings';
 
@@ -427,6 +428,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   setDebugMode: (v) => set({ debugMode: v }),
 
   appendLog: (line) => {
+    addDebugLine(line);  // write to unbounded file accumulator (persisted every 30s)
     const s = get();
     set({ debugLog: logEntry(s.debugLog, line) });
   },

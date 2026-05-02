@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.5] — 2026-05-02
+
+### Added
+- **Persistent debug log** — all log lines are now written to a file on device (`paceai_debug_{runId}.log`) every 30 seconds during a run, so logs survive app crashes and Android process termination. Previously the log was in-memory only; if the app was killed mid-run, logs were lost and diagnosing issues was impossible.
+  - New `debugLogFile` service: unbounded accumulator (no eviction), 30-second flush interval, overwrites file with all accumulated lines so the file is always complete up to the last flush.
+  - "SHARE LAST DEBUG LOG" button added to Settings → DEBUG section — works after the run ends and across app restarts.
+  - The SHARE LOG button in the debug overlay now shares the full file-backed log (all lines from run start) instead of just the rolling 200-line in-memory view.
+
+---
+
 ## [2.3.4] — 2026-05-02
 
 ### Fixed

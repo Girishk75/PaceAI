@@ -1,8 +1,9 @@
 import React, { useRef, useEffect } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Share,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import { useRunStore } from '../store/runStore';
+import { shareDebugLog } from '../services/debugLogFile';
 import { C, F } from '../theme';
 
 export function DebugOverlay() {
@@ -34,13 +35,8 @@ export function DebugOverlay() {
   const fpDot = fpFresh ? C.green : fpConnected ? C.warn : C.dim;
 
   const handleShare = async () => {
-    if (!debugLog.length) return;
-    try {
-      await Share.share({
-        message: debugLog.join('\n'),
-        title: 'PaceAI Debug Log',
-      });
-    } catch {}
+    // Share the full file-backed log (includes all lines, not just the rolling 200)
+    await shareDebugLog();
   };
 
   // elapsedSecs is referenced so the component re-renders every tick, keeping ages live

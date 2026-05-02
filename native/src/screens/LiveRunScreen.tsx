@@ -13,6 +13,7 @@ import { formatTime, formatPace } from '../algorithms/gps';
 import { RUNNER } from '../constants/runner';
 import { useGPS } from '../hooks/useGPS';
 import { checkTrigger, fireCoach, speak, stopSpeech } from '../services/aiCoach';
+import { initDebugLog, flushDebugLog } from '../services/debugLogFile';
 import { DebugOverlay } from '../components/DebugOverlay';
 
 const { width: W } = Dimensions.get('window');
@@ -48,6 +49,17 @@ export function LiveRunScreen() {
     const unsub = useRunStore.subscribe(st => { storeRef.current = st; });
     return unsub;
   }, []);
+
+  // Init debug log file for this run and flush every 30s.
+  // Keeps logs on disk so they survive app crashes and are available post-run.
+  useEffect(() => {
+    initDebugLog(s.runId);
+    const flushTimer = setInterval(() => { flushDebugLog(); }, 30_000);
+    return () => {
+      clearInterval(flushTimer);
+      flushDebugLog();  // final flush on screen exit
+    };
+  }, [s.runId]);
 
   // Wake lock + immersive
   useEffect(() => {
