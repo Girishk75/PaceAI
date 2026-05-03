@@ -1,5 +1,5 @@
 /*
- * PaceAI Foot Pod — Firmware v2.3
+ * PaceAI Foot Pod — Firmware v2.3.1
  * Hardware : ESP32 DevKit + MPU6050  (ankle mount, under sock)
  * Output   : BLE GATT notify — "cadence,impact,gct,steps,strike,pronation" every 1 s
  *
@@ -244,7 +244,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
 // ═══════════════════════════════════════════════════════════════════════════
 
 static void calibrate() {
-  Serial.println("PaceAI v2.3 — hold pod still for ~12 seconds...");
+  Serial.println("PaceAI v2.3.1 — hold pod still for ~12 seconds...");
 
   double sumGx = 0, sumGy = 0, sumGz = 0;
   double sumMag = 0, sumMagSq = 0;
@@ -526,7 +526,7 @@ void setup() {
   lastSampleMs = millis();
   lastBleMs    = millis();
 
-  Serial.println("PaceAI FootPod v2.3 — advertising");
+  Serial.println("PaceAI FootPod v2.3.1 — advertising");
   Serial.printf("Impact threshold: %.3f G  |  GCT settle/liftoff: %.0f / %.0f deg/s\n",
                 impactThresh, GYRO_SETTLE, GYRO_LIFTOFF);
 }
