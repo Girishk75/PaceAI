@@ -438,7 +438,8 @@ static void processSample(const Imu &s) {
         gctPhase = GCT_IDLE;
       } else if (now - gctStart > (uint32_t)MAX_GCT_MS) {
         // Foot contact too long — cap and classify with whatever roll we saw
-        lastGCT = (float)MAX_GCT_MS;
+        uint32_t dur = now - gctStart;
+        if (dur >= (uint32_t)MIN_GCT_MS) lastGCT = (float)MAX_GCT_MS;
         if      (peakRollDelta >  PRON_OVER_DEG)  lastPronation = PRON_OVER;
         else if (peakRollDelta <  PRON_RIGID_DEG) lastPronation = PRON_RIGID;
         else                                       lastPronation = PRON_NEUTRAL;
