@@ -5,6 +5,15 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.6] — 2026-05-03
+
+### Fixed
+- **Coach double-fire** — `run_start` and `2min_checkin` could fire twice in the same second when the GPS background task and BackgroundTimer both called `tick()` simultaneously. A 5-second cooldown on `lastCoachTs` prevents the duplicate.
+- **Coach trigger audit trail** — each trigger name and elapsed time is now written to the debug log (`[coach] run_start at 3s`), making post-run log analysis reliable.
+- **GCT timeout outlier** (firmware) — ground contact time was recorded as 600ms on STANCE timeout even for contacts shorter than `MIN_GCT_MS`. The minimum floor is now enforced on both the normal toe-off and the timeout exit paths.
+
+---
+
 ## [2.3.5] — 2026-05-02
 
 ### Added
