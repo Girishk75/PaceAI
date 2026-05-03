@@ -83,6 +83,7 @@ export function LiveRunScreen() {
       if (!trigger) return;
 
       st.markCoach(trigger);
+      st.appendLog(`[coach] ${trigger} at ${storeRef.current.elapsedSecs}s`);
       const text = await fireCoach(trigger, storeRef.current);
       if (text) {
         setLastMsg(text);

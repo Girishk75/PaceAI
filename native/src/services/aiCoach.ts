@@ -21,11 +21,12 @@ export function checkTrigger(s: RunState): string | null {
   const cad   = s.cadence;
   const imp   = s.impact;
 
-  // Run start (fire once at 3s)
-  if (el === 3) return 'run_start';
+  // Run start (fire once at 3s) — 5s cooldown guards against double-fire from
+  // simultaneous GPS task + BackgroundTimer calls at the same elapsed second.
+  if (el === 3 && (now - s.lastCoachTs) > 5000) return 'run_start';
 
-  // 2-min check-in every 120s
-  if (el > 0 && el % 120 === 0) return '2min_checkin';
+  // 2-min check-in every 120s — same double-fire guard
+  if (el > 0 && el % 120 === 0 && (now - s.lastCoachTs) > 5000) return '2min_checkin';
 
   // km milestones
   const km = Math.floor(dist);
