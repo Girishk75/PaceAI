@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.7] — 2026-05-16
+
+### Fixed
+- **run_start coach missed** — `el === 3` exact-second check was skipped if `tick()` jumped from 2→4 before the GPS task kicked in. Now fires in the 3–6s window using `lastCoachTs === 0` as the once-only guard, so the opening coach cue always fires regardless of timer jitter at run start.
+
+---
+
 ## [2.3.6] — 2026-05-03
 
 ### Fixed
