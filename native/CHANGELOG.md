@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.8] — 2026-05-17
+
+### Added
+- **Auto-save logs on run end** — when a run is confirmed stopped (from LiveRunScreen or PausedScreen), two files are automatically written to the app's document directory with a human-readable timestamp suffix (`YYYYMMDD_HHMMSS`):
+  - `paceai_coach_<timestamp>.csv` — all coach events for that run
+  - `paceai_debug_<timestamp>.log` — full debug log for that run
+  No user action required; files are always created regardless of how the run was ended.
+
+---
+
 ## [2.3.7] — 2026-05-16
 
 ### Fixed

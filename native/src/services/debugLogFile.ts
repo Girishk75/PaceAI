@@ -48,6 +48,18 @@ export async function shareDebugLog(): Promise<void> {
   }
 }
 
+// Saves the debug log for the current run to documentDirectory with a timestamp suffix.
+// Called automatically when a run ends — no user action required.
+export async function saveDebugLogWithTimestamp(timestamp: string): Promise<void> {
+  await flushDebugLog();
+  const src  = logPath();
+  const dest = `${FileSystem.documentDirectory}paceai_debug_${timestamp}.log`;
+  const info = await FileSystem.getInfoAsync(src);
+  if (info.exists) {
+    await FileSystem.copyAsync({ from: src, to: dest });
+  }
+}
+
 // Share the most recent saved log — works after the run ends and across sessions.
 export async function shareLastDebugLog(): Promise<void> {
   // If a run is active, share its live log

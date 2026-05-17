@@ -125,3 +125,14 @@ export async function shareCSV(filename: string, rows: Record<string, unknown>[]
   await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
   await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: `Export ${filename}` });
 }
+
+// Writes coach events for a single run to documentDirectory with a timestamp suffix.
+// Called automatically when a run ends — no user action required.
+export async function saveCoachLogForRun(runId: string, timestamp: string): Promise<void> {
+  const all    = await loadCoachLog();
+  const events = all.filter(e => e.runId === runId);
+  if (!events.length) return;
+  const csv  = toCSV(events as unknown as Record<string, unknown>[]);
+  const path = `${FileSystem.documentDirectory}paceai_coach_${timestamp}.csv`;
+  await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+}

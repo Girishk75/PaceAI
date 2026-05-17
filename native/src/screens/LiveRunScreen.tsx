@@ -13,7 +13,8 @@ import { formatTime, formatPace } from '../algorithms/gps';
 import { RUNNER } from '../constants/runner';
 import { useGPS } from '../hooks/useGPS';
 import { checkTrigger, fireCoach, speak, stopSpeech } from '../services/aiCoach';
-import { initDebugLog, flushDebugLog } from '../services/debugLogFile';
+import { initDebugLog, flushDebugLog, saveDebugLogWithTimestamp } from '../services/debugLogFile';
+import { saveCoachLogForRun } from '../services/storage';
 import { DebugOverlay } from '../components/DebugOverlay';
 
 const { width: W } = Dimensions.get('window');
@@ -114,7 +115,14 @@ export function LiveRunScreen() {
       `${formatTime(s.elapsedSecs)}  ·  ${s.dist.toFixed(2)} km`,
       [
         { text: 'Keep Running', style: 'cancel' },
-        { text: 'End Run', style: 'destructive', onPress: () => { stopSpeech(); endRun(); } },
+        { text: 'End Run', style: 'destructive', onPress: () => {
+          stopSpeech();
+          const { runId, runDate, runTime } = storeRef.current;
+          const ts = runDate.replace(/-/g, '') + '_' + runTime.replace(/:/g, '');
+          endRun();
+          saveCoachLogForRun(runId, ts).catch(() => {});
+          saveDebugLogWithTimestamp(ts).catch(() => {});
+        }},
       ],
     );
   };
