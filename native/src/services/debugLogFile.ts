@@ -5,7 +5,7 @@ import * as Sharing from 'expo-sharing';
 const LAST_LOG_KEY = 'paceai_last_debug_log_path';
 
 // Unbounded accumulator for the current run — never evicted, written to disk
-// every 30 s so logs survive app crashes / Android process termination.
+// every 10 s so logs survive app crashes / Android process termination.
 const allLines: string[] = [];
 let currentRunId  = '';
 let flushing      = false;
@@ -27,10 +27,14 @@ export async function flushDebugLog(): Promise<void> {
   if (!currentRunId || allLines.length === 0 || flushing) return;
   flushing = true;
   try {
-    const text = allLines.join('\n') + '\n';
-    await FileSystem.writeAsStringAsync(logPath(), text, {
+    const text    = allLines.join('\n') + '\n';
+    const tmpPath = logPath() + '.tmp';
+    // Write to .tmp first — if the app crashes mid-write the live file is untouched.
+    // moveAsync is an atomic rename on Android's Linux kernel.
+    await FileSystem.writeAsStringAsync(tmpPath, text, {
       encoding: FileSystem.EncodingType.UTF8,
     });
+    await FileSystem.moveAsync({ from: tmpPath, to: logPath() });
     // Persist path for cross-session access (Settings screen, post-run share)
     await AsyncStorage.setItem(LAST_LOG_KEY, logPath());
   } catch {}

@@ -51,11 +51,11 @@ export function LiveRunScreen() {
     return unsub;
   }, []);
 
-  // Init debug log file for this run and flush every 30s.
+  // Init debug log file for this run and flush every 10s.
   // Keeps logs on disk so they survive app crashes and are available post-run.
   useEffect(() => {
     initDebugLog(s.runId);
-    const flushTimer = setInterval(() => { flushDebugLog(); }, 30_000);
+    const flushTimer = setInterval(() => { flushDebugLog(); }, 10_000);
     return () => {
       clearInterval(flushTimer);
       flushDebugLog();  // final flush on screen exit

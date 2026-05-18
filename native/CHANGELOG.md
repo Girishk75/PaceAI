@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.9] — 2026-05-18
+
+### Fixed
+- **Crash-safe mid-run logging** — three improvements to ensure no data is lost if the app is killed mid-run:
+  1. **Atomic debug log writes** — `flushDebugLog` now writes to a `.tmp` file first, then renames it to the live log file. Linux `rename()` is atomic, so a crash mid-write leaves the previous log intact rather than producing a corrupt file.
+  2. **Live coach CSV written on every event** — `appendCoachEvent` now mirrors each event immediately to `paceai_coach_${runId}.csv` (atomic write). Previously coach data was only in AsyncStorage until run end; a crash before "End Run" produced no CSV file at all.
+  3. **Debug log flush interval reduced 30s → 10s** — worst-case log loss on crash drops from 30 seconds to 10 seconds with negligible I/O overhead.
+
+---
+
 ## [2.3.8] — 2026-05-17
 
 ### Added

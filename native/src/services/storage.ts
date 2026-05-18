@@ -78,6 +78,18 @@ export async function appendCoachEvent(ev: CoachEvent): Promise<void> {
   const events = raw ? JSON.parse(raw) as CoachEvent[] : [];
   events.push(ev);
   await AsyncStorage.setItem(COACH_LOG_KEY, JSON.stringify(events));
+  // Mirror this run's events to a live CSV file so data survives an app crash.
+  // Atomic write (tmp → move) prevents a corrupt file if the app dies mid-write.
+  const runEvents = events.filter(e => e.runId === ev.runId);
+  await writeLiveCoachCSV(ev.runId, runEvents).catch(() => {});
+}
+
+async function writeLiveCoachCSV(runId: string, events: CoachEvent[]): Promise<void> {
+  const csv     = toCSV(events as unknown as Record<string, unknown>[]);
+  const tmpPath = `${FileSystem.documentDirectory}paceai_coach_${runId}.tmp`;
+  const dest    = `${FileSystem.documentDirectory}paceai_coach_${runId}.csv`;
+  await FileSystem.writeAsStringAsync(tmpPath, csv, { encoding: FileSystem.EncodingType.UTF8 });
+  await FileSystem.moveAsync({ from: tmpPath, to: dest });
 }
 
 export async function loadCoachLog(): Promise<CoachEvent[]> {
@@ -126,13 +138,20 @@ export async function shareCSV(filename: string, rows: Record<string, unknown>[]
   await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: `Export ${filename}` });
 }
 
-// Writes coach events for a single run to documentDirectory with a timestamp suffix.
-// Called automatically when a run ends — no user action required.
+// Copies the live coach CSV (written after each event) to a timestamp-named file.
+// Falls back to AsyncStorage if the live file doesn't exist (e.g. no coach events fired).
 export async function saveCoachLogForRun(runId: string, timestamp: string): Promise<void> {
+  const livePath = `${FileSystem.documentDirectory}paceai_coach_${runId}.csv`;
+  const destPath = `${FileSystem.documentDirectory}paceai_coach_${timestamp}.csv`;
+  const info = await FileSystem.getInfoAsync(livePath);
+  if (info.exists) {
+    await FileSystem.copyAsync({ from: livePath, to: destPath });
+    return;
+  }
+  // Fallback: rebuild from AsyncStorage (no events fired → empty CSV, skip)
   const all    = await loadCoachLog();
   const events = all.filter(e => e.runId === runId);
   if (!events.length) return;
-  const csv  = toCSV(events as unknown as Record<string, unknown>[]);
-  const path = `${FileSystem.documentDirectory}paceai_coach_${timestamp}.csv`;
-  await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+  const csv = toCSV(events as unknown as Record<string, unknown>[]);
+  await FileSystem.writeAsStringAsync(destPath, csv, { encoding: FileSystem.EncodingType.UTF8 });
 }
