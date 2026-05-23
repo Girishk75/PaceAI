@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.10] — 2026-05-23
+
+### Fixed
+- **Distance doubling bug** — `tick()` is called simultaneously from both `BackgroundTimer` (1 Hz) and the GPS `TaskManager` (1 Hz). Previously, `dist += 1/pace` ran on every call, so two calls per second each added a full second's worth of distance — resulting in ~2× the actual distance (e.g. 24 km displayed when Garmin recorded 12 km at the same pace). Fix: distance is only accumulated when the wall-clock `elapsed` counter has actually advanced past `elapsedSecs`, matching the same guard already applied to elapsed time itself.
+
+---
+
 ## [2.3.9] — 2026-05-18
 
 ### Fixed

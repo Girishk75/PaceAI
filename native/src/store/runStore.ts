@@ -282,8 +282,13 @@ export const useRunStore = create<RunState>((set, get) => ({
       ? s.gpsPace
       : simPace(s.runConfig, elapsed);
 
-    // Distance: accumulate per second, never go backwards, sync when GPS jumps ahead
-    let dist = s.dist + 1 / paceForDist; // km per second
+    // Distance: only accumulate when wall-clock elapsed has actually advanced.
+    // tick() is called from both BackgroundTimer (1 Hz) and the GPS TaskManager (1 Hz).
+    // Without this guard, two calls in the same second each add 1/pace → distance doubles.
+    let dist = s.dist;
+    if (elapsed > s.elapsedSecs) {
+      dist += 1 / paceForDist; // km per second
+    }
     if (s.gpsDist > dist) dist = s.gpsDist;
 
     // Display pace
