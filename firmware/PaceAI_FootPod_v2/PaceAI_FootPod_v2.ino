@@ -1,5 +1,5 @@
 /*
- * PaceAI Foot Pod — Firmware v2.3.1
+ * PaceAI Foot Pod — Firmware v2.4
  * Hardware : ESP32 DevKit + MPU6050  (ankle mount, under sock)
  * Output   : BLE GATT notify — "cadence,impact,gct,steps,strike,pronation" every 1 s
  *
@@ -79,8 +79,9 @@
 
 // ── GCT (gyroscope-based) ───────────────────────────────────────────────────
 #define GYRO_SETTLE   50.0f   // °/s — below this confirms foot is on ground
-#define GYRO_LIFTOFF  120.0f  // °/s — above this signals toe-off
+#define GYRO_LIFTOFF  200.0f  // °/s — above this signals toe-off
 #define MIN_GCT_MS    80      // shortest plausible contact time
+#define MIN_STANCE_MS 100     // cannot exit GCT_STANCE before this many ms
 #define MAX_GCT_MS    600     // hard cap (replaces the 400ms timeout in v1.1)
 
 // ── Cadence ─────────────────────────────────────────────────────────────────
@@ -147,6 +148,11 @@ enum GCTPhase { GCT_IDLE, GCT_SETTLING, GCT_STANCE };
 static GCTPhase gctPhase  = GCT_IDLE;
 static uint32_t gctStart  = 0;
 static float    lastGCT   = 0;
+
+// ── GCT diagnostics (per-step, logged to Serial) ────────────────────────────
+static float gctSettleMin = 9999.0f;  // lowest gMag seen during GCT_SETTLING
+static float gctStanceMax = 0.0f;     // highest gMag seen during GCT_STANCE
+static float gctExitGMag  = 0.0f;     // gMag at the moment toe-off was detected
 
 // ── Cadence ─────────────────────────────────────────────────────────────────
 static uint32_t cadBuf[CAD_BUF] = {0};
@@ -244,7 +250,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
 // ═══════════════════════════════════════════════════════════════════════════
 
 static void calibrate() {
-  Serial.println("PaceAI v2.3.1 — hold pod still for ~12 seconds...");
+  Serial.println("PaceAI v2.4 — hold pod still for ~12 seconds...");
 
   double sumGx = 0, sumGy = 0, sumGz = 0;
   double sumMag = 0, sumMagSq = 0;
@@ -371,9 +377,12 @@ static void processSample(const Imu &s) {
       else                                    lastStrike = STRIKE_MIDFOOT;
       peakRollDelta = 0;  // reset pronation accumulator for this step
 
-      // Start GCT timer
-      gctPhase = GCT_SETTLING;
-      gctStart = now;
+      // Start GCT timer and reset per-step diagnostics
+      gctPhase     = GCT_SETTLING;
+      gctStart     = now;
+      gctSettleMin = 9999.0f;
+      gctStanceMax = 0.0f;
+      gctExitGMag  = 0.0f;
     }
   } else {
     // Track peak while above exit threshold
@@ -411,9 +420,12 @@ static void processSample(const Imu &s) {
 
     case GCT_SETTLING:
       // Foot is still rotating/vibrating after impact — wait for it to settle
+      if (s.gMag < gctSettleMin) gctSettleMin = s.gMag;
       if (s.gMag < GYRO_SETTLE) {
         gctPhase = GCT_STANCE;       // foot confirmed on ground
       } else if (now - gctStart > (uint32_t)MAX_GCT_MS) {
+        Serial.printf("[GCT] SETTLING_TIMEOUT  settle_min=%.0f°/s  dur=%lums\n",
+                      gctSettleMin, (unsigned long)(now - gctStart));
         gctPhase = GCT_IDLE;         // timed out — discard this GCT
       }
       break;
@@ -425,12 +437,16 @@ static void processSample(const Imu &s) {
       {
         float rollDelta = cfRoll - neutralRoll;
         if (fabsf(rollDelta) > fabsf(peakRollDelta)) peakRollDelta = rollDelta;
+        if (s.gMag > gctStanceMax) gctStanceMax = s.gMag;
       }
-      if (s.gMag > GYRO_LIFTOFF) {
+      if (s.gMag > GYRO_LIFTOFF && (now - gctStart) >= (uint32_t)MIN_STANCE_MS) {
         uint32_t dur = now - gctStart;
+        gctExitGMag = s.gMag;
         if (dur >= (uint32_t)MIN_GCT_MS) {
           lastGCT = (float)fminf((float)dur, (float)MAX_GCT_MS);
         }
+        Serial.printf("[GCT] exit  settle_min=%.0f°/s  stance_peak=%.0f°/s  exit=%.0f°/s  dur=%lums\n",
+                      gctSettleMin, gctStanceMax, gctExitGMag, (unsigned long)dur);
         // Classify pronation from signed peak roll deviation during stance
         if      (peakRollDelta >  PRON_OVER_DEG)  lastPronation = PRON_OVER;
         else if (peakRollDelta <  PRON_RIGID_DEG) lastPronation = PRON_RIGID;
@@ -440,6 +456,8 @@ static void processSample(const Imu &s) {
         // Foot contact too long — cap and classify with whatever roll we saw
         uint32_t dur = now - gctStart;
         if (dur >= (uint32_t)MIN_GCT_MS) lastGCT = (float)MAX_GCT_MS;
+        Serial.printf("[GCT] MAX_TIMEOUT  settle_min=%.0f°/s  stance_peak=%.0f°/s  dur=%lums\n",
+                      gctSettleMin, gctStanceMax, (unsigned long)dur);
         if      (peakRollDelta >  PRON_OVER_DEG)  lastPronation = PRON_OVER;
         else if (peakRollDelta <  PRON_RIGID_DEG) lastPronation = PRON_RIGID;
         else                                       lastPronation = PRON_NEUTRAL;
@@ -527,7 +545,7 @@ void setup() {
   lastSampleMs = millis();
   lastBleMs    = millis();
 
-  Serial.println("PaceAI FootPod v2.3.1 — advertising");
+  Serial.println("PaceAI FootPod v2.4 — advertising");
   Serial.printf("Impact threshold: %.3f G  |  GCT settle/liftoff: %.0f / %.0f deg/s\n",
                 impactThresh, GYRO_SETTLE, GYRO_LIFTOFF);
 }
