@@ -13,6 +13,8 @@ import { formatTime, formatPace } from '../algorithms/gps';
 import { RUNNER } from '../constants/runner';
 import { useGPS } from '../hooks/useGPS';
 import { checkTrigger, fireCoach, speak, stopSpeech } from '../services/aiCoach';
+import { initDebugLog, flushDebugLog, saveDebugLogWithTimestamp } from '../services/debugLogFile';
+import { saveCoachLogForRun } from '../services/storage';
 import { DebugOverlay } from '../components/DebugOverlay';
 
 const { width: W } = Dimensions.get('window');
@@ -49,6 +51,17 @@ export function LiveRunScreen() {
     return unsub;
   }, []);
 
+  // Init debug log file for this run and flush every 10s.
+  // Keeps logs on disk so they survive app crashes and are available post-run.
+  useEffect(() => {
+    initDebugLog(s.runId);
+    const flushTimer = setInterval(() => { flushDebugLog(); }, 10_000);
+    return () => {
+      clearInterval(flushTimer);
+      flushDebugLog();  // final flush on screen exit
+    };
+  }, [s.runId]);
+
   // Wake lock + immersive
   useEffect(() => {
     KeepAwake.activateKeepAwakeAsync();
@@ -71,6 +84,7 @@ export function LiveRunScreen() {
       if (!trigger) return;
 
       st.markCoach(trigger);
+      st.appendLog(`[coach] ${trigger} at ${storeRef.current.elapsedSecs}s`);
       const text = await fireCoach(trigger, storeRef.current);
       if (text) {
         setLastMsg(text);
@@ -101,7 +115,14 @@ export function LiveRunScreen() {
       `${formatTime(s.elapsedSecs)}  ·  ${s.dist.toFixed(2)} km`,
       [
         { text: 'Keep Running', style: 'cancel' },
-        { text: 'End Run', style: 'destructive', onPress: () => { stopSpeech(); endRun(); } },
+        { text: 'End Run', style: 'destructive', onPress: () => {
+          stopSpeech();
+          const { runId, runDate, runTime } = storeRef.current;
+          const ts = runDate.replace(/-/g, '') + '_' + runTime.replace(/:/g, '');
+          endRun();
+          saveCoachLogForRun(runId, ts).catch(() => {});
+          saveDebugLogWithTimestamp(ts).catch(() => {});
+        }},
       ],
     );
   };
@@ -249,7 +270,7 @@ export function LiveRunScreen() {
               <Text style={st.podSimIcon}>⚡</Text>
               <Text style={st.podSimTitle}>FOOT POD NOT CONNECTED</Text>
               <Text style={st.podSimSub}>Connect PaceAI-FootPod via BLE</Text>
-              <Text style={st.podSimSub}>to see impact, GCT and steps</Text>
+              <Text style={st.podSimSub}>to see impact, GCT, steps, strike and pronation</Text>
             </View>
           )}
         </View>

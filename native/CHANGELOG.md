@@ -5,6 +5,94 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.3.10] — 2026-05-23
+
+### Fixed
+- **Distance doubling bug** — `tick()` is called simultaneously from both `BackgroundTimer` (1 Hz) and the GPS `TaskManager` (1 Hz). Previously, `dist += 1/pace` ran on every call, so two calls per second each added a full second's worth of distance — resulting in ~2× the actual distance (e.g. 24 km displayed when Garmin recorded 12 km at the same pace). Fix: distance is only accumulated when the wall-clock `elapsed` counter has actually advanced past `elapsedSecs`, matching the same guard already applied to elapsed time itself.
+
+---
+
+## [2.3.9] — 2026-05-18
+
+### Fixed
+- **Crash-safe mid-run logging** — three improvements to ensure no data is lost if the app is killed mid-run:
+  1. **Atomic debug log writes** — `flushDebugLog` now writes to a `.tmp` file first, then renames it to the live log file. Linux `rename()` is atomic, so a crash mid-write leaves the previous log intact rather than producing a corrupt file.
+  2. **Live coach CSV written on every event** — `appendCoachEvent` now mirrors each event immediately to `paceai_coach_${runId}.csv` (atomic write). Previously coach data was only in AsyncStorage until run end; a crash before "End Run" produced no CSV file at all.
+  3. **Debug log flush interval reduced 30s → 10s** — worst-case log loss on crash drops from 30 seconds to 10 seconds with negligible I/O overhead.
+
+---
+
+## [2.3.8] — 2026-05-17
+
+### Added
+- **Auto-save logs on run end** — when a run is confirmed stopped (from LiveRunScreen or PausedScreen), two files are automatically written to the app's document directory with a human-readable timestamp suffix (`YYYYMMDD_HHMMSS`):
+  - `paceai_coach_<timestamp>.csv` — all coach events for that run
+  - `paceai_debug_<timestamp>.log` — full debug log for that run
+  No user action required; files are always created regardless of how the run was ended.
+
+---
+
+## [2.3.7] — 2026-05-16
+
+### Fixed
+- **run_start coach missed** — `el === 3` exact-second check was skipped if `tick()` jumped from 2→4 before the GPS task kicked in. Now fires in the 3–6s window using `lastCoachTs === 0` as the once-only guard, so the opening coach cue always fires regardless of timer jitter at run start.
+
+---
+
+## [2.3.6] — 2026-05-03
+
+### Fixed
+- **Coach double-fire** — `run_start` and `2min_checkin` could fire twice in the same second when the GPS background task and BackgroundTimer both called `tick()` simultaneously. A 5-second cooldown on `lastCoachTs` prevents the duplicate.
+- **Coach trigger audit trail** — each trigger name and elapsed time is now written to the debug log (`[coach] run_start at 3s`), making post-run log analysis reliable.
+- **GCT timeout outlier** (firmware) — ground contact time was recorded as 600ms on STANCE timeout even for contacts shorter than `MIN_GCT_MS`. The minimum floor is now enforced on both the normal toe-off and the timeout exit paths.
+
+---
+
+## [2.3.5] — 2026-05-02
+
+### Added
+- **Persistent debug log** — all log lines are now written to a file on device (`paceai_debug_{runId}.log`) every 30 seconds during a run, so logs survive app crashes and Android process termination. Previously the log was in-memory only; if the app was killed mid-run, logs were lost and diagnosing issues was impossible.
+  - New `debugLogFile` service: unbounded accumulator (no eviction), 30-second flush interval, overwrites file with all accumulated lines so the file is always complete up to the last flush.
+  - "SHARE LAST DEBUG LOG" button added to Settings → DEBUG section — works after the run ends and across app restarts.
+  - The SHARE LOG button in the debug overlay now shares the full file-backed log (all lines from run start) instead of just the rolling 200-line in-memory view.
+
+---
+
+## [2.3.4] — 2026-05-02
+
+### Fixed
+- **Run timer and coach completely stopped when screen locked** — Android's Doze mode and OEM battery optimization throttle the JS thread's `BackgroundTimer` when the phone screen is off (e.g. in a pocket during a long run). The `tick()` call in `BackgroundTimer.setInterval` froze `elapsedSecs`, which in turn prevented every coach trigger (`el > 30`, `el > 60`, etc.) and distance milestones from ever firing. Result: coach log showed only the 3-second `run_start` entry for a 107-minute, 14 km run.
+
+  Fix — two changes:
+  1. `tick()` now computes elapsed as `Math.round((Date.now() - startTs) / 1000)` (wall-clock) instead of incrementing by 1 per call. This makes it safe to call from multiple sources and means irregular or skipped calls never cause drift or double-counting.
+  2. `tick()` is now also called from inside the GPS background `TaskManager` task. The GPS foreground service is battery-optimization exempt and survives screen lock, so it serves as a reliable timer driver even when `BackgroundTimer` is throttled. `BackgroundTimer` is kept as a backup for when GPS is unavailable (tunnel, indoor).
+
+---
+
+## [2.3.3] — 2026-05-01
+
+### Fixed
+- **Foot pod not appearing in Settings scan** — The ESP32 puts its device name in the BLE scan-response packet, not the advertisement packet. Android sometimes skips the scan-response, so `device.name` arrived as `null` and the `!device.name` filter silently dropped the foot pod from the results. Fixed by passing `[FOOT_POD_SERVICE]` as the service UUID filter when scanning for the foot pod (and `[HR_SERVICE]` for HR) — service UUIDs are always in the advertisement packet and are unaffected by the scan-response issue. Also softened the name filter from a hard drop to a fallback `'Unknown Device'` label.
+
+---
+
+## [2.3.2] — 2026-04-30
+
+### Fixed
+- **Unclamped array index on corrupt BLE packet** — `STRIKE_LABEL[strikeCode]` and `PRONATION_LABEL[pronationCode]` in `LiveRunScreen` could index past array bounds on corrupt BLE input. Added bounds validation in `bleService.ts` parse layer: values outside `{0,1,2}` are clamped to -1 (unknown).
+- **Asymmetric tie-breaking in dominant strike/pronation** — `dominantStrike` and `dominantPronation` previously broke ties toward the pathological type (heel, over). Ties now resolve to the benign type (midfoot, neutral). Both functions also require a minimum of 10 classified samples before returning a non-null label, preventing early-run noise from driving the stored pattern.
+- **`az_safe` sign flip at singularity** — `copysignf(0.01f, s.az)` replaces the literal `0.01f` so the clamp preserves the sign of `az` when approaching the ±90° gimbal singularity (low practical risk but correct behaviour).
+- **Placeholder text omits new metrics** — "to see impact, GCT and steps" updated to mention strike and pronation.
+- **Dead-code fallthrough in dominant-type helpers** — final unreachable `return` statements removed from `dominantStrike`/`dominantPronation`; minimum sample threshold extracted as `MIN_CLASSIFIED_SAMPLES = 10` constant.
+
+### Changed
+- Strike/pronation packet-count comment clarified: counters increment per BLE packet (~1 Hz), not per step (~3/s); ratios are valid but raw counts are not step counts.
+- Storage comment clarifies terse stored values (`'over'`) vs expanded AI coach prompt values (`'overpronation'`).
+- Debug label array comment documents firmware code ordering.
+- Firmware: `lastPronation` (toe-off) and `lastStrike` (IC) may refer to different step cycles — noted in GCT_STANCE comment.
+
+---
+
 ## [2.3.1] — 2026-04-29
 
 ### Fixed

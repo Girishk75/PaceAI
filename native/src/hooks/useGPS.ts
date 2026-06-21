@@ -3,6 +3,8 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { PaceSmoother, haversineMetres } from '../algorithms/gps';
 import { useRunStore } from '../store/runStore';
+// useRunStore is also used at module level (inside the TaskManager task) so the
+// import must be at the top — not inside the hook function.
 
 const TASK_NAME      = 'paceai-background-location';
 const ACCURACY_THRESH = 150; // metres — relaxed for Mumbai urban
@@ -11,10 +13,18 @@ const ACCURACY_THRESH = 150; // metres — relaxed for Mumbai urban
 // expo-location's startLocationUpdatesAsync automatically creates an Android
 // ForegroundService with a persistent notification — free, no license needed.
 // This keeps GPS alive when the screen is locked.
+//
+// tick() is driven from here so the run timer stays accurate even when Android
+// throttles BackgroundTimer in the JS thread (Doze mode, screen locked).
+// The GPS foreground service is battery-exempt so this callback always fires.
 TaskManager.defineTask(TASK_NAME, ({ data, error }: any) => {
   if (error || !data?.locations?.length) return;
   const loc: Location.LocationObject = data.locations[data.locations.length - 1];
-  // Forward to store via a module-level ref updated by the hook
+  // Drive the run timer — wall-clock based tick() is idempotent so calling
+  // it from both here and BackgroundTimer is safe (no double-counting).
+  const store = useRunStore.getState();
+  if (store.running) store.tick();
+  // Forward GPS data via module-level ref updated by the hook
   gpsCallback?.(loc);
 });
 

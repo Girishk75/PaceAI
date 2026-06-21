@@ -3,6 +3,7 @@ import { RunType, Weather, RUNNER } from '../constants/runner';
 import { calcFatigue } from '../algorithms/fatigue';
 import { formatTime } from '../algorithms/gps';
 import { getHRZone, simHR } from '../algorithms/hrZone';
+import { addDebugLine } from '../services/debugLogFile';
 
 export type Screen = 'setup' | 'live' | 'paused' | 'done' | 'history' | 'settings';
 
@@ -269,7 +270,9 @@ export const useRunStore = create<RunState>((set, get) => ({
     if (!s.running) return;
 
     const now = Date.now();
-    const elapsed = s.elapsedSecs + 1;
+    // Wall-clock elapsed — safe to call from multiple sources (GPS task + BackgroundTimer).
+    // Using Date.now()-startTs means irregular or duplicated calls never drift or double-count.
+    const elapsed = Math.round((now - s.startTs) / 1000);
 
     // GPS staleness (15s without update)
     const stale = s.gpsPace > 0 && (now - s.gpsPaceTs) > 15000;
@@ -279,8 +282,13 @@ export const useRunStore = create<RunState>((set, get) => ({
       ? s.gpsPace
       : simPace(s.runConfig, elapsed);
 
-    // Distance: accumulate per second, never go backwards, sync when GPS jumps ahead
-    let dist = s.dist + 1 / paceForDist; // km per second
+    // Distance: only accumulate when wall-clock elapsed has actually advanced.
+    // tick() is called from both BackgroundTimer (1 Hz) and the GPS TaskManager (1 Hz).
+    // Without this guard, two calls in the same second each add 1/pace → distance doubles.
+    let dist = s.dist;
+    if (elapsed > s.elapsedSecs) {
+      dist += 1 / paceForDist; // km per second
+    }
     if (s.gpsDist > dist) dist = s.gpsDist;
 
     // Display pace
@@ -359,7 +367,9 @@ export const useRunStore = create<RunState>((set, get) => ({
     const offset  = s.fpStepsOffset < 0 ? rawSteps : s.fpStepsOffset;
     const steps   = Math.max(0, rawSteps - offset);
 
-    // Strike / pronation — update most-recent code and per-type counts
+    // Strike / pronation — update most-recent code and per-BLE-packet type counts
+    // Note: counts increment once per ~1 Hz packet, not once per step (~3/s at 180 spm).
+    // Ratios (used for dominant-type and coach triggers) are still valid; raw counts are not step counts.
     const strikeCode    = strike    >= 0 ? strike    : s.strikeCode;
     const pronationCode = pronation >= 0 ? pronation : s.pronationCode;
     const strikeHeel  = s.strikeHeel  + (strike === 1 ? 1 : 0);
@@ -390,6 +400,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     };
 
     if (s.debugMode) {
+      // Index order matches firmware codes: 0=midfoot, 1=heel, 2=forefoot / 0=neutral, 1=over, 2=rigid
       const strLabel = strike >= 0 ? ['mid','heel','fore'][strike] : '-';
       const proLabel = pronation >= 0 ? ['neu','over','rig'][pronation] : '-';
       set({ ...base, debugLog: logEntry(s.debugLog,
@@ -422,6 +433,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   setDebugMode: (v) => set({ debugMode: v }),
 
   appendLog: (line) => {
+    addDebugLine(line);  // write to unbounded file accumulator (persisted every 30s)
     const s = get();
     set({ debugLog: logEntry(s.debugLog, line) });
   },

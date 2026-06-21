@@ -1,5 +1,5 @@
 /*
- * PaceAI Foot Pod — Firmware v2.3
+ * PaceAI Foot Pod — Firmware v2.4
  * Hardware : ESP32 DevKit + MPU6050  (ankle mount, under sock)
  * Output   : BLE GATT notify — "cadence,impact,gct,steps,strike,pronation" every 1 s
  *
@@ -42,6 +42,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <esp_bt.h>
 #include <math.h>
 
 // ── BLE — DO NOT CHANGE (must match app) ───────────────────────────────────
@@ -78,8 +79,9 @@
 
 // ── GCT (gyroscope-based) ───────────────────────────────────────────────────
 #define GYRO_SETTLE   50.0f   // °/s — below this confirms foot is on ground
-#define GYRO_LIFTOFF  120.0f  // °/s — above this signals toe-off
+#define GYRO_LIFTOFF  200.0f  // °/s — above this signals toe-off
 #define MIN_GCT_MS    80      // shortest plausible contact time
+#define MIN_STANCE_MS 100     // cannot exit GCT_STANCE before this many ms
 #define MAX_GCT_MS    600     // hard cap (replaces the 400ms timeout in v1.1)
 
 // ── Cadence ─────────────────────────────────────────────────────────────────
@@ -146,6 +148,11 @@ enum GCTPhase { GCT_IDLE, GCT_SETTLING, GCT_STANCE };
 static GCTPhase gctPhase  = GCT_IDLE;
 static uint32_t gctStart  = 0;
 static float    lastGCT   = 0;
+
+// ── GCT diagnostics (per-step, logged to Serial) ────────────────────────────
+static float gctSettleMin = 9999.0f;  // lowest gMag seen during GCT_SETTLING
+static float gctStanceMax = 0.0f;     // highest gMag seen during GCT_STANCE
+static float gctExitGMag  = 0.0f;     // gMag at the moment toe-off was detected
 
 // ── Cadence ─────────────────────────────────────────────────────────────────
 static uint32_t cadBuf[CAD_BUF] = {0};
@@ -222,7 +229,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
   // Accel-based angles — drift-free long-term reference for the CF.
   // atan2(ax, az) = sagittal pitch; atan2(ay, az) = frontal roll.
   // Clamp az to avoid instability when near ±90°.
-  float az_safe    = (fabsf(s.az) < 0.01f) ? 0.01f : s.az;
+  float az_safe    = (fabsf(s.az) < 0.01f) ? copysignf(0.01f, s.az) : s.az;
   s.accelPitch     = atan2f(s.ax, az_safe) * (180.0f / M_PI);
   s.accelRoll      = atan2f(s.ay, az_safe) * (180.0f / M_PI);
   return s;
@@ -243,7 +250,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
 // ═══════════════════════════════════════════════════════════════════════════
 
 static void calibrate() {
-  Serial.println("PaceAI v2.3 — hold pod still for ~12 seconds...");
+  Serial.println("PaceAI v2.4 — hold pod still for ~12 seconds...");
 
   double sumGx = 0, sumGy = 0, sumGz = 0;
   double sumMag = 0, sumMagSq = 0;
@@ -275,11 +282,18 @@ static void calibrate() {
   }
 
   if (good < 100) {
-    Serial.println("ERROR: fewer than 100 good samples — check I2C wiring");
-    while (true) {
-      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-      delay(200);
-    }
+    // Poor I2C signal — likely a power supply issue (running on battery with low current).
+    // Use safe defaults and continue to bleSetup() rather than hanging.
+    // The pod will advertise in degraded mode; impact/strike/pronation accuracy is reduced.
+    Serial.println("WARNING: poor calibration (<100 good samples) — using defaults. Check battery/power.");
+    gyroOff[0]   = 0.0f; gyroOff[1] = 0.0f; gyroOff[2] = 0.0f;
+    impactThresh = fmaxf(MIN_IMPACT_G * 1.5f, MIN_IMPACT_G);
+    exitThresh   = impactThresh * IMPACT_EXIT_R;
+    neutralPitch = 0.0f; neutralRoll = 0.0f;
+    cfPitch      = 0.0f; cfRoll      = 0.0f;
+    calDone      = true;
+    digitalWrite(LED_PIN, HIGH);
+    return;
   }
 
   // Gyro DC offsets (raw int16 units — subtracted before scaling in mpuToImu)
@@ -363,9 +377,12 @@ static void processSample(const Imu &s) {
       else                                    lastStrike = STRIKE_MIDFOOT;
       peakRollDelta = 0;  // reset pronation accumulator for this step
 
-      // Start GCT timer
-      gctPhase = GCT_SETTLING;
-      gctStart = now;
+      // Start GCT timer and reset per-step diagnostics
+      gctPhase     = GCT_SETTLING;
+      gctStart     = now;
+      gctSettleMin = 9999.0f;
+      gctStanceMax = 0.0f;
+      gctExitGMag  = 0.0f;
     }
   } else {
     // Track peak while above exit threshold
@@ -403,24 +420,33 @@ static void processSample(const Imu &s) {
 
     case GCT_SETTLING:
       // Foot is still rotating/vibrating after impact — wait for it to settle
+      if (s.gMag < gctSettleMin) gctSettleMin = s.gMag;
       if (s.gMag < GYRO_SETTLE) {
         gctPhase = GCT_STANCE;       // foot confirmed on ground
       } else if (now - gctStart > (uint32_t)MAX_GCT_MS) {
+        Serial.printf("[GCT] SETTLING_TIMEOUT  settle_min=%.0f°/s  dur=%lums\n",
+                      gctSettleMin, (unsigned long)(now - gctStart));
         gctPhase = GCT_IDLE;         // timed out — discard this GCT
       }
       break;
 
     case GCT_STANCE:
       // Foot on ground — track peak roll deviation for pronation, wait for toe-off
+      // Note: lastPronation is classified at toe-off, lastStrike at IC — they may
+      // refer to different step cycles if a packet is broadcast between the two events.
       {
         float rollDelta = cfRoll - neutralRoll;
         if (fabsf(rollDelta) > fabsf(peakRollDelta)) peakRollDelta = rollDelta;
+        if (s.gMag > gctStanceMax) gctStanceMax = s.gMag;
       }
-      if (s.gMag > GYRO_LIFTOFF) {
+      if (s.gMag > GYRO_LIFTOFF && (now - gctStart) >= (uint32_t)MIN_STANCE_MS) {
         uint32_t dur = now - gctStart;
+        gctExitGMag = s.gMag;
         if (dur >= (uint32_t)MIN_GCT_MS) {
           lastGCT = (float)fminf((float)dur, (float)MAX_GCT_MS);
         }
+        Serial.printf("[GCT] exit  settle_min=%.0f°/s  stance_peak=%.0f°/s  exit=%.0f°/s  dur=%lums\n",
+                      gctSettleMin, gctStanceMax, gctExitGMag, (unsigned long)dur);
         // Classify pronation from signed peak roll deviation during stance
         if      (peakRollDelta >  PRON_OVER_DEG)  lastPronation = PRON_OVER;
         else if (peakRollDelta <  PRON_RIGID_DEG) lastPronation = PRON_RIGID;
@@ -428,7 +454,10 @@ static void processSample(const Imu &s) {
         gctPhase = GCT_IDLE;
       } else if (now - gctStart > (uint32_t)MAX_GCT_MS) {
         // Foot contact too long — cap and classify with whatever roll we saw
-        lastGCT = (float)MAX_GCT_MS;
+        uint32_t dur = now - gctStart;
+        if (dur >= (uint32_t)MIN_GCT_MS) lastGCT = (float)MAX_GCT_MS;
+        Serial.printf("[GCT] MAX_TIMEOUT  settle_min=%.0f°/s  stance_peak=%.0f°/s  dur=%lums\n",
+                      gctSettleMin, gctStanceMax, (unsigned long)dur);
         if      (peakRollDelta >  PRON_OVER_DEG)  lastPronation = PRON_OVER;
         else if (peakRollDelta <  PRON_RIGID_DEG) lastPronation = PRON_RIGID;
         else                                       lastPronation = PRON_NEUTRAL;
@@ -453,6 +482,15 @@ class BLECBs : public BLEServerCallbacks {
 
 static void bleSetup() {
   BLEDevice::init(DEVICE_NAME);
+
+  // Reduce TX power from default +9 dBm to -6 dBm.
+  // Default draws ~100-150 mA peak — too much for a small LiPo on battery alone,
+  // causing voltage sag that prevents BLE from starting.
+  // At -6 dBm the pod still reaches 3-5 m indoors, more than enough for ankle → phone.
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV,      ESP_PWR_LVL_N6);
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT,   ESP_PWR_LVL_N6);
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_CONN_HDL0, ESP_PWR_LVL_N6);
+
   BLEServer  *srv = BLEDevice::createServer();
   srv->setCallbacks(new BLECBs());
 
@@ -467,7 +505,8 @@ static void bleSetup() {
   BLEAdvertising *adv = BLEDevice::getAdvertising();
   adv->addServiceUUID(SERVICE_UUID);
   adv->setScanResponse(true);
-  adv->setMinPreferred(0x06);   // helps iPhone discover faster
+  adv->setMinInterval(160);  // 160 × 0.625 ms = 100 ms — reduces TX duty cycle on battery
+  adv->setMaxInterval(320);  // 320 × 0.625 ms = 200 ms
   BLEDevice::startAdvertising();
 }
 
@@ -506,7 +545,7 @@ void setup() {
   lastSampleMs = millis();
   lastBleMs    = millis();
 
-  Serial.println("PaceAI FootPod v2.3 — advertising");
+  Serial.println("PaceAI FootPod v2.4 — advertising");
   Serial.printf("Impact threshold: %.3f G  |  GCT settle/liftoff: %.0f / %.0f deg/s\n",
                 impactThresh, GYRO_SETTLE, GYRO_LIFTOFF);
 }

@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRunStore } from '../store/runStore';
 import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
+import { saveDebugLogWithTimestamp } from '../services/debugLogFile';
+import { saveCoachLogForRun } from '../services/storage';
 import * as KeepAwake from 'expo-keep-awake';
 
 export function PausedScreen() {
@@ -14,6 +16,14 @@ export function PausedScreen() {
   const handleResume = () => {
     KeepAwake.activateKeepAwakeAsync();
     resumeRun();
+  };
+
+  const handleEnd = () => {
+    const { runId, runDate, runTime } = useRunStore.getState();
+    const ts = runDate.replace(/-/g, '') + '_' + runTime.replace(/:/g, '');
+    endRun();
+    saveCoachLogForRun(runId, ts).catch(() => {});
+    saveDebugLogWithTimestamp(ts).catch(() => {});
   };
 
   return (
@@ -44,7 +54,7 @@ export function PausedScreen() {
         <TouchableOpacity style={[st.btn, st.btnResume]} onPress={handleResume}>
           <Text style={[st.btnTxt, { color: C.green }]}>RESUME</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[st.btn, st.btnEnd]} onPress={endRun}>
+        <TouchableOpacity style={[st.btn, st.btnEnd]} onPress={handleEnd}>
           <Text style={[st.btnTxt, { color: C.red }]}>END RUN</Text>
         </TouchableOpacity>
       </View>

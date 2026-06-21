@@ -6,20 +6,23 @@ import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
 import { saveRun, loadRuns, loadCoachLog, shareCSV } from '../services/storage';
 
+// Minimum BLE packets classified before committing to a dominant label (~10 s at 1 Hz).
+const MIN_CLASSIFIED_SAMPLES = 10;
+
 function dominantStrike(heel: number, mid: number, fore: number): string | null {
-  const total = heel + mid + fore;
-  if (total === 0) return null;
-  if (heel >= mid && heel >= fore) return 'heel';
-  if (fore > mid) return 'forefoot';
-  return 'midfoot';
+  if (heel + mid + fore < MIN_CLASSIFIED_SAMPLES) return null;
+  const max = Math.max(heel, mid, fore);
+  if (mid  === max) return 'midfoot';   // tie-break to benign
+  if (fore === max) return 'forefoot';
+  return 'heel';
 }
 
 function dominantPronation(neutral: number, over: number, rigid: number): string | null {
-  const total = neutral + over + rigid;
-  if (total === 0) return null;
-  if (over >= neutral && over >= rigid) return 'over';
-  if (rigid > neutral) return 'rigid';
-  return 'neutral';
+  if (neutral + over + rigid < MIN_CLASSIFIED_SAMPLES) return null;
+  const max = Math.max(neutral, over, rigid);
+  if (neutral === max) return 'neutral'; // tie-break to benign
+  if (rigid   === max) return 'rigid';
+  return 'over';
 }
 
 export function DoneScreen() {

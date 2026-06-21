@@ -21,11 +21,13 @@ export function checkTrigger(s: RunState): string | null {
   const cad   = s.cadence;
   const imp   = s.impact;
 
-  // Run start (fire once at 3s)
-  if (el === 3) return 'run_start';
+  // Run start — fire once in the 3–6s window. The exact-second check (el===3)
+  // misses if tick() skips second 3 (BackgroundTimer throttled before GPS kicks in).
+  // lastCoachTs===0 means run_start has never fired; that's the only guard needed.
+  if (el >= 3 && el <= 6 && s.lastCoachTs === 0) return 'run_start';
 
-  // 2-min check-in every 120s
-  if (el > 0 && el % 120 === 0) return '2min_checkin';
+  // 2-min check-in every 120s — same double-fire guard
+  if (el > 0 && el % 120 === 0 && (now - s.lastCoachTs) > 5000) return '2min_checkin';
 
   // km milestones
   const km = Math.floor(dist);
