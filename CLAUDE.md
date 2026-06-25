@@ -43,3 +43,32 @@ firmware/        ESP32 Arduino sketches
 - `native/src/services/bleManager.ts` — shared BleManager singleton
 - `native/src/services/storage.ts` — AsyncStorage settings (apiKey, device IDs, debugMode)
 - `firmware/PaceAI_FootPod_v2/PaceAI_FootPod_v2.ino` — ESP32 foot pod firmware
+
+---
+
+## Android APK Build (MANDATORY — never suggest EAS cloud or eas build)
+
+The user builds on **Windows** using local Gradle. Always give these exact steps:
+
+```powershell
+# 1. Pull latest
+cd C:\Users\Administrator\PaceAI
+git pull origin claude/build-paceai-coach-N3M2x
+
+# 2. Regenerate native Android folder (required after any app.json change)
+cd C:\Users\Administrator\PaceAI\native
+npx expo prebuild --platform android --clean
+
+# 3. Build the APK
+cd android
+gradlew assembleRelease --rerun-tasks --no-build-cache
+```
+
+APK output path:
+```
+C:\Users\Administrator\PaceAI\native\android\app\build\outputs\apk\release\app-release.apk
+```
+
+Transfer the APK to the phone manually and install it.
+
+**Never suggest** `eas build`, `eas build --local`, or `npx expo run:android` as the build method.
