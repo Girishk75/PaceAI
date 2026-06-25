@@ -336,7 +336,7 @@ class BLEService {
     if (!this.fp) return false;
     try {
       const cmd = Buffer.from('R').toString('base64');
-      await this.fp.writeCharacteristicWithResponseForService(
+      await this.fp.writeCharacteristicWithoutResponseForService(
         FOOT_POD_SERVICE, FOOT_POD_CHAR, cmd,
       );
       log('FP recalibration command sent');
