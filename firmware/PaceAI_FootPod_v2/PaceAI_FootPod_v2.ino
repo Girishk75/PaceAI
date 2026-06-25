@@ -169,6 +169,7 @@ static uint32_t lastBleMs   = 0;
 static uint32_t lastSampleMs = 0;
 static uint32_t lastLedMs    = 0;
 static bool     calDone      = false;
+static volatile bool recalRequested = false;  // set by BLE onWrite, consumed in loop()
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -480,6 +481,29 @@ class BLECBs : public BLEServerCallbacks {
   }
 };
 
+// Receives write from the app (single byte 'R' = recalibrate).
+// Runs in the FreeRTOS BLE task — only set the flag; never call calibrate() here.
+class CharCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) override {
+    std::string val = pCharacteristic->getValue();
+    if (!val.empty() && val[0] == 'R') recalRequested = true;
+  }
+};
+
+// Full state reset + fresh calibrate().  All 9 mutable accumulators must be
+// cleared before calibrate() runs a second time — see firmware design notes.
+static void triggerRecalibration() {
+  inStrike      = false;  peakG         = 0.0f;
+  gctPhase      = GCT_IDLE; gctStart    = 0;
+  gctSettleMin  = 9999.0f; gctStanceMax = 0.0f; gctExitGMag = 0.0f;
+  peakRollDelta = 0.0f;  lastStepMs    = millis();
+  memset(cadBuf, 0, sizeof(cadBuf)); cadIdx = 0; cadCount = 0;
+  lastStrike    = -1;  lastPronation  = -1;
+  lastCad       = 0.0f; lastImpact    = 0.0f; lastGCT = 0.0f;
+  Serial.println("[CAL] Recalibration triggered — hold pod still...");
+  calibrate();
+}
+
 static void bleSetup() {
   BLEDevice::init(DEVICE_NAME);
 
@@ -497,8 +521,9 @@ static void bleSetup() {
   BLEService *svc = srv->createService(SERVICE_UUID);
   pChar = svc->createCharacteristic(
     CHARACTERISTIC_UUID,
-    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ
+    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
   );
+  pChar->setCallbacks(new CharCallbacks());
   pChar->addDescriptor(new BLE2902());
   svc->start();
 
@@ -562,6 +587,9 @@ void loop() {
       processSample(s);
     }
   }
+
+  // Recalibration requested via BLE write — runs between samples, never mid-interrupt
+  if (recalRequested) { recalRequested = false; triggerRecalibration(); }
 
   // 1 Hz BLE broadcast
   if (now - lastBleMs >= (uint32_t)BLE_MS) {
