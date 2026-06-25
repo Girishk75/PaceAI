@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.4.1] — 2026-06-25
+
+### Fixed
+- **RECALIBRATE POD button did nothing** — switched from `writeCharacteristicWithResponseForService` to `writeCharacteristicWithoutResponseForService` (write-without-response). The previous write-with-response requires an ATT ACK handshake that the ESP32 characteristic was not completing, causing the write to throw silently and return false with no countdown. Firmware updated to add `PROPERTY_WRITE_NO_RESPONSE` alongside `PROPERTY_WRITE`.
+
+---
+
 ## [2.4.0] — 2026-06-25
 
 ### Added

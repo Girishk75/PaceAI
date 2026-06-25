@@ -521,7 +521,8 @@ static void bleSetup() {
   BLEService *svc = srv->createService(SERVICE_UUID);
   pChar = svc->createCharacteristic(
     CHARACTERISTIC_UUID,
-    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
+    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ |
+    BLECharacteristic::PROPERTY_WRITE  | BLECharacteristic::PROPERTY_WRITE_NO_RESPONSE
   );
   pChar->setCallbacks(new CharCallbacks());
   pChar->addDescriptor(new BLE2902());
