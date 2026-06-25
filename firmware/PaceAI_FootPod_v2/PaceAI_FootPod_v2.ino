@@ -485,8 +485,8 @@ class BLECBs : public BLEServerCallbacks {
 // Runs in the FreeRTOS BLE task — only set the flag; never call calibrate() here.
 class CharCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) override {
-    std::string val = pCharacteristic->getValue();
-    if (!val.empty() && val[0] == 'R') recalRequested = true;
+    String val = pCharacteristic->getValue();
+    if (val.length() > 0 && val[0] == 'R') recalRequested = true;
   }
 };
 
@@ -522,7 +522,7 @@ static void bleSetup() {
   pChar = svc->createCharacteristic(
     CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_WRITE  | BLECharacteristic::PROPERTY_WRITE_NO_RESPONSE
+    BLECharacteristic::PROPERTY_WRITE  | BLECharacteristic::PROPERTY_WRITE_NR
   );
   pChar->setCallbacks(new CharCallbacks());
   pChar->addDescriptor(new BLE2902());
