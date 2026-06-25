@@ -37,16 +37,18 @@ C:\Users\Administrator\PaceAI\firmware\PaceAI_FootPod_v2\PaceAI_FootPod_v2.ino
 
 Expected output (good calibration):
 ```
-PaceAI v2.4 — hold pod still for ~12 seconds...
+PaceAI vX.X — hold pod still for ~12 seconds...
   0%  10%  20%  30%  40%  50%  60%  70%  80%  90%
 Calibration complete
   Baseline : ~1.000 G  (σ = small value)
   Threshold: X.XXX G  (exit: X.XXX G)
   Gyro off : X / X / X  (raw units)
   Neutral  : pitch X.X°  roll X.X°
-PaceAI FootPod v2.4 — advertising
-Impact threshold: X.XXX G  |  GCT settle/liftoff: 50 / 200 deg/s
+PaceAI FootPod vX.X — advertising
+Impact threshold: X.XXX G  |  GCT settle/liftoff: X / X deg/s
 ```
+
+The version and threshold numbers will vary — what matters is that all lines appear and there is no `WARNING` line.
 
 Then 1 Hz broadcast lines:
 ```
