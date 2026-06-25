@@ -328,6 +328,24 @@ class BLEService {
       else this.startScan();
     }, delay);
   }
+
+  // Send 'R' byte to the foot pod to trigger a fresh 12-second calibration.
+  // The firmware resets all accumulators before running calibrate() so stale
+  // GCT/strike/cadence state can't corrupt the new baseline.
+  async recalibrateFootPod(): Promise<boolean> {
+    if (!this.fp) return false;
+    try {
+      const cmd = Buffer.from('R').toString('base64');
+      await this.fp.writeCharacteristicWithResponseForService(
+        FOOT_POD_SERVICE, FOOT_POD_CHAR, cmd,
+      );
+      log('FP recalibration command sent');
+      return true;
+    } catch (e: any) {
+      log(`FP recalibrate failed: ${e?.message}`);
+      return false;
+    }
+  }
 }
 
 export const bleService = new BLEService();

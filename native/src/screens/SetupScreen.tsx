@@ -6,6 +6,7 @@ import { C, F } from '../theme';
 import { RUN_TYPES, WEATHER_OPTIONS, RunType, Weather } from '../constants/runner';
 import { prewarmGPS } from '../hooks/useGPS';
 import { loadSettings } from '../services/storage';
+import { bleService } from '../services/bleService';
 
 export function SetupScreen() {
   const startRun     = useRunStore(s => s.startRun);
@@ -17,9 +18,10 @@ export function SetupScreen() {
   const [targetDist,  setTargetDist]  = useState('5');
   const [targetPace,  setTargetPace]  = useState('');  // e.g. "5:30"
   const [weather,     setWeather]     = useState<Weather>('humid');
-  const [prewarmed,   setPrewarmed]   = useState(false);
-  const [savedHrName, setSavedHrName] = useState('');
-  const [savedFpName, setSavedFpName] = useState('');
+  const [prewarmed,      setPrewarmed]      = useState(false);
+  const [savedHrName,    setSavedHrName]    = useState('');
+  const [savedFpName,    setSavedFpName]    = useState('');
+  const [recalCountdown, setRecalCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     loadSettings().then(cfg => {
@@ -27,6 +29,19 @@ export function SetupScreen() {
       setSavedFpName(cfg.fpDeviceName);
     });
   }, []);
+
+  // Tick the recalibration countdown down to 0 then clear it
+  useEffect(() => {
+    if (recalCountdown === null) return;
+    if (recalCountdown <= 0) { setRecalCountdown(null); return; }
+    const t = setTimeout(() => setRecalCountdown(c => (c !== null ? c - 1 : null)), 1000);
+    return () => clearTimeout(t);
+  }, [recalCountdown]);
+
+  const handleRecalibrate = async () => {
+    const ok = await bleService.recalibrateFootPod();
+    if (ok) setRecalCountdown(12);
+  };
 
   const parsePace = (s: string): number => {
     if (!s) return 0;
@@ -127,6 +142,17 @@ export function SetupScreen() {
             savedName={savedFpName}
             onConfigure={() => setScreen('settings')}
           />
+          {fpConnected && (
+            <TouchableOpacity
+              style={[s.recalBtn, recalCountdown !== null && s.recalBtnActive]}
+              onPress={recalCountdown === null ? handleRecalibrate : undefined}
+              disabled={recalCountdown !== null}
+            >
+              <Text style={[s.recalTxt, recalCountdown !== null && { color: C.green }]}>
+                {recalCountdown !== null ? `CALIBRATING… ${recalCountdown}s` : 'RECALIBRATE POD'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <TouchableOpacity style={s.startBtn} onPress={handleStart}>
@@ -192,4 +218,7 @@ const s = StyleSheet.create({
   deviceStatus: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 4 },
   startBtn:     { marginTop: 32, backgroundColor: 'rgba(0,255,163,0.15)', borderWidth: 1, borderColor: 'rgba(0,255,163,0.4)', borderRadius: 12, paddingVertical: 18, alignItems: 'center' },
   startTxt:     { fontFamily: F.header, fontSize: 16, fontWeight: '700', letterSpacing: 3, color: C.green },
+  recalBtn:     { marginTop: 4, marginBottom: 6, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: C.muted + '55', alignItems: 'center' },
+  recalBtnActive: { borderColor: C.green + '55', backgroundColor: 'rgba(0,255,163,0.05)' },
+  recalTxt:     { fontFamily: F.header, fontSize: 10, letterSpacing: 2, color: C.muted },
 });

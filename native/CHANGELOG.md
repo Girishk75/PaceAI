@@ -5,6 +5,14 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.4.0] — 2026-06-25
+
+### Added
+- **Recalibrate Pod button** — when the foot pod is connected on the Setup screen a "RECALIBRATE POD" button appears below the device row. Tapping it sends a single-byte BLE write (`'R'`) to the pod, triggering a fresh 12-second calibration. A countdown ("CALIBRATING… 12s") is displayed while the pod recalibrates; the button re-enables automatically when the countdown finishes.
+- **Firmware v2.4 recalibration support** — the ESP32 now accepts writes on the existing GATT characteristic. On receipt of `'R'` it resets all 9 mutable accumulators (GCT state machine, impact/cadence history, strike/pronation outputs) before running `calibrate()`, preventing stale state from corrupting the new baseline. The BLE connection is maintained throughout — no need to re-pair.
+
+---
+
 ## [2.3.10] — 2026-05-23
 
 ### Fixed
