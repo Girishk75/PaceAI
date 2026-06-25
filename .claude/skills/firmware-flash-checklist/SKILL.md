@@ -1,6 +1,6 @@
 ---
 name: firmware-flash-checklist
-description: Use after every firmware change to verify the flash process and confirm correct Serial Monitor output. Covers pull, Arduino IDE flash, and Serial verification steps.
+description: Use after every firmware change to verify the flash process and confirm correct Serial Monitor output. Covers pull, Arduino IDE flash, Serial verification, and Android APK build steps.
 ---
 
 # Firmware Flash Checklist
@@ -37,15 +37,15 @@ C:\Users\Administrator\PaceAI\firmware\PaceAI_FootPod_v2\PaceAI_FootPod_v2.ino
 
 Expected output (good calibration):
 ```
-PaceAI v2.3 — hold pod still for ~12 seconds...
+PaceAI v2.4 — hold pod still for ~12 seconds...
   0%  10%  20%  30%  40%  50%  60%  70%  80%  90%
 Calibration complete
   Baseline : ~1.000 G  (σ = small value)
   Threshold: X.XXX G  (exit: X.XXX G)
   Gyro off : X / X / X  (raw units)
   Neutral  : pitch X.X°  roll X.X°
-PaceAI FootPod v2.3 — advertising
-Impact threshold: X.XXX G  |  GCT settle/liftoff: 50 / 120 deg/s
+PaceAI FootPod v2.4 — advertising
+Impact threshold: X.XXX G  |  GCT settle/liftoff: 50 / 200 deg/s
 ```
 
 Then 1 Hz broadcast lines:
@@ -78,6 +78,27 @@ Strap pod to ankle, walk 20 steps, confirm in Serial Monitor:
 - `steps` incrementing
 - `imp` > 0
 - `conn=1` once app connects
+
+## Step 7 — Build and install Android APK
+
+Run these commands on Windows (always use Gradle — never EAS):
+
+```powershell
+# Regenerate native Android folder (required after any app.json/versionCode change)
+cd C:\Users\Administrator\PaceAI\native
+npx expo prebuild --platform android --clean
+
+# Build the APK
+cd android
+gradlew assembleRelease --rerun-tasks --no-build-cache
+```
+
+APK output:
+```
+C:\Users\Administrator\PaceAI\native\android\app\build\outputs\apk\release\app-release.apk
+```
+
+Transfer to phone and install. If Android blocks install, enable **Install from unknown sources** in phone settings.
 
 ## Known issues / gotchas
 
