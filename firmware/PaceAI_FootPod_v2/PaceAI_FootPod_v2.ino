@@ -502,6 +502,10 @@ static void triggerRecalibration() {
   lastCad       = 0.0f; lastImpact    = 0.0f; lastGCT = 0.0f;
   Serial.println("[CAL] Recalibration triggered — hold pod still...");
   calibrate();
+  // Drop any 'R' writes that arrived while calibrate() was blocking — otherwise
+  // a queued flag would immediately start a second 12s calibration after the
+  // app countdown has finished, capturing a moving (corrupt) baseline.
+  recalRequested = false;
 }
 
 static void bleSetup() {

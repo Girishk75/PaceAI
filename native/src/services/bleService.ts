@@ -32,6 +32,9 @@ class BLEService {
   private scanTimer:    ReturnType<typeof setTimeout>   | null = null;
   private fpWatchdog:   ReturnType<typeof setInterval>  | null = null;
   private ready        = false;
+  // While a recalibration is running the pod stops broadcasting for ~12 s —
+  // the stale-data watchdog must not treat that silence as a dead subscription.
+  private recalGraceUntil = 0;
 
   // ── Boot ──────────────────────────────────────────────────────────────────
 
@@ -290,6 +293,7 @@ class BLEService {
     this.clearFPWatchdog();
     this.fpWatchdog = setInterval(() => {
       if (this.fp !== device) { this.clearFPWatchdog(); return; }
+      if (Date.now() < this.recalGraceUntil) return;     // pod is recalibrating — silence is expected
       const { lastFpPacketTs, fpConnected } = useRunStore.getState();
       if (!fpConnected || lastFpPacketTs === 0) return;  // not yet streaming
       const age = Date.now() - lastFpPacketTs;
@@ -335,13 +339,16 @@ class BLEService {
   async recalibrateFootPod(): Promise<boolean> {
     if (!this.fp) return false;
     try {
+      // 12 s calibration + ~1 s until the first post-cal broadcast, plus slack
+      this.recalGraceUntil = Date.now() + 15_000;
       const cmd = Buffer.from('R').toString('base64');
       await this.fp.writeCharacteristicWithoutResponseForService(
         FOOT_POD_SERVICE, FOOT_POD_CHAR, cmd,
       );
-      log('FP recalibration command sent');
+      log('FP recalibration command sent — watchdog paused 15s');
       return true;
     } catch (e: any) {
+      this.recalGraceUntil = 0;  // write failed — restore normal watchdog behaviour
       log(`FP recalibrate failed: ${e?.message}`);
       return false;
     }

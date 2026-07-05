@@ -5,6 +5,14 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.4.2] — 2026-07-05
+
+### Fixed
+- **Watchdog no longer force-disconnects the pod during recalibration** — the foot pod stops broadcasting for ~12 s while `calibrate()` runs, which tripped the 6 s stale-data watchdog and caused a pointless disconnect/reconnect mid-countdown. `recalibrateFootPod()` now pauses the watchdog for 15 s (12 s calibration + first broadcast + slack). Real disconnects are unaffected — those are handled by `onDisconnected`, not the watchdog.
+- **Firmware: queued 'R' writes can no longer trigger a second calibration** — an 'R' write arriving while `calibrate()` was blocking (e.g. a double-tap) set the flag again and started a second 12 s calibration right after the countdown ended — while the runner was already moving, silently corrupting the baseline (gyro offsets, impact threshold, neutral angles) for the whole run. `triggerRecalibration()` now clears the flag after `calibrate()` returns.
+
+---
+
 ## [2.4.1] — 2026-06-25
 
 ### Fixed
