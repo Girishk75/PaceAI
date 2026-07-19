@@ -15,6 +15,8 @@ When an item is fixed, move it to the Done section with the version it shipped i
 | B2 | BLE monitor error → `cancelConnection()` race | `native/src/services/bleService.ts:222` | Remove `cancelConnection()` from monitor error handler — let `onDisconnected` handle cleanup naturally. **Confirmed in the wild** (2026-07-18 debug log, 4612s): monitor error arrived after onDisconnected + retry scheduling, then called cancelConnection() on the dead device. Harmless that time, but the race is real. |
 | B3 | No scan fallback after repeated direct reconnect failures | `native/src/services/bleService.ts:316` | After 3 failed direct reconnects, fall back to `startScan()`. Currently retries direct connect indefinitely. |
 
+| B13 | GPS distance over-counts ~20% | `native/src/hooks/useGPS.ts` | Confirmed 2026-07-18: PaceAI 12.14 km vs Garmin ~10.0 km for the same run; instantaneous pace matched Garmin (7:35/km avg) so PaceSmoother is fine — the haversine accumulator is inflating. Likely cause: accepts fixes up to `ACCURACY_THRESH=150` m and sums every jump ≥ 3 m at 1 Hz, so urban GPS scatter is summed as distance. Km announcements fire early as a result. Candidate fixes: tighten accuracy gate for the accumulator (~20–25 m), scale the min-jump threshold with reported accuracy, or gate on smoothed speed. |
+
 ---
 
 ## 🟡 Medium — Reliability / Accuracy
