@@ -1,5 +1,5 @@
 /*
- * PaceAI Foot Pod — Firmware v2.4
+ * PaceAI Foot Pod — Firmware v2.5
  * Hardware : ESP32 DevKit + MPU6050  (ankle mount, under sock)
  * Output   : BLE GATT notify — "cadence,impact,gct,steps,strike,pronation" every 1 s
  *
@@ -79,9 +79,17 @@
 
 // ── GCT (gyroscope-based) ───────────────────────────────────────────────────
 #define GYRO_SETTLE   50.0f   // °/s — below this confirms foot is on ground
-#define GYRO_LIFTOFF  200.0f  // °/s — above this signals toe-off
+#define GYRO_LIFTOFF  160.0f  // °/s — above this signals toe-off
+                              // v2.5: was 200. With MIN_STANCE_MS=220 bridging the
+                              // post-landing dorsiflexion transient, a lower threshold
+                              // catches true toe-off crisply.
 #define MIN_GCT_MS    80      // shortest plausible contact time
-#define MIN_STANCE_MS 100     // cannot exit GCT_STANCE before this many ms
+#define MIN_STANCE_MS 220     // cannot exit GCT_STANCE before this many ms
+                              // v2.5: was 100. 2026-07-18 run: 76% of running GCTs pinned
+                              // at the 100ms floor (false exits — dorsiflexion transient
+                              // crossing 200°/s); real GCTs clustered 300-390ms at easy
+                              // pace. 220 bridges the transient. NOTE: will clip true GCT
+                              // at fast race pace (<240ms contact) — revisit if racing.
 #define MAX_GCT_MS    600     // hard cap (replaces the 400ms timeout in v1.1)
 
 // ── Cadence ─────────────────────────────────────────────────────────────────
@@ -251,7 +259,7 @@ static Imu mpuToImu(int16_t ax, int16_t ay, int16_t az,
 // ═══════════════════════════════════════════════════════════════════════════
 
 static void calibrate() {
-  Serial.println("PaceAI v2.4 — hold pod still for ~12 seconds...");
+  Serial.println("PaceAI v2.5 — hold pod still for ~12 seconds...");
 
   double sumGx = 0, sumGy = 0, sumGz = 0;
   double sumMag = 0, sumMagSq = 0;
@@ -575,7 +583,7 @@ void setup() {
   lastSampleMs = millis();
   lastBleMs    = millis();
 
-  Serial.println("PaceAI FootPod v2.4 — advertising");
+  Serial.println("PaceAI FootPod v2.5 — advertising");
   Serial.printf("Impact threshold: %.3f G  |  GCT settle/liftoff: %.0f / %.0f deg/s\n",
                 impactThresh, GYRO_SETTLE, GYRO_LIFTOFF);
 }
