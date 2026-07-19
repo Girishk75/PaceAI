@@ -22,7 +22,7 @@ When an item is fixed, move it to the Done section with the version it shipped i
 | ID | Item | File | Notes |
 |---|---|---|---|
 | B4 | BLE scan uses `device.name` filter instead of service UUID | `native/src/services/bleService.ts:113` | Replace `device.name === FOOT_POD_NAME` with service UUID match for first-pairing scan. Some Android versions suppress name in scan response. |
-| B5 | GCT threshold validation and tuning | Firmware | **Validated 2026-07-18 (12 km run, 178 spm):** 76% of running GCTs pinned at the 100 ms `MIN_STANCE_MS` floor (false early exits), 20% at 300–390 ms (likely real). `GYRO_LIFTOFF=200°/s` still too low — dorsiflexion transient crosses it. **Next: raise `MIN_STANCE_MS` to 220 ms, lower `GYRO_LIFTOFF` to 160°/s**, re-validate expecting a single 300–390 ms cluster. |
+| B5 | GCT threshold validation and tuning | Firmware | 2026-07-18 run data: 76% of running GCTs pinned at the 100 ms floor (false early exits), 20% at 300–390 ms (likely real). **Fix applied in firmware v2.5** (`MIN_STANCE_MS=220`, `GYRO_LIFTOFF=160°/s`) — awaiting re-validation run, expecting a single 300–390 ms cluster. Caveat: 220 ms floor clips true GCT at race pace. |
 | B6 | Impact G validation | Firmware + nRF | Cross-validate impact readings against a reference method (known drop height or slow-mo video frame analysis). |
 | B7 | Strike / pronation validation | Firmware + nRF | Validate strike classification with slow-motion video from the side; pronation with slow-motion from behind. |
 
