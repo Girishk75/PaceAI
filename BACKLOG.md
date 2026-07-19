@@ -12,7 +12,7 @@ When an item is fixed, move it to the Done section with the version it shipped i
 | ID | Item | File | Notes |
 |---|---|---|---|
 | B1 | `coachMuted` not reset in `startRun()` | `native/src/store/runStore.ts:211` | One-line fix: add `coachMuted: false` to startRun() set() call. Causes silent coach on all runs after first mute. Root cause of 92-minute run with zero coach events. |
-| B2 | BLE monitor error → `cancelConnection()` race | `native/src/services/bleService.ts:222` | Remove `cancelConnection()` from monitor error handler — let `onDisconnected` handle cleanup naturally. |
+| B2 | BLE monitor error → `cancelConnection()` race | `native/src/services/bleService.ts:222` | Remove `cancelConnection()` from monitor error handler — let `onDisconnected` handle cleanup naturally. **Confirmed in the wild** (2026-07-18 debug log, 4612s): monitor error arrived after onDisconnected + retry scheduling, then called cancelConnection() on the dead device. Harmless that time, but the race is real. |
 | B3 | No scan fallback after repeated direct reconnect failures | `native/src/services/bleService.ts:316` | After 3 failed direct reconnects, fall back to `startScan()`. Currently retries direct connect indefinitely. |
 
 ---
@@ -35,7 +35,7 @@ When an item is fixed, move it to the Done section with the version it shipped i
 | B8 | OLED SSD1306 0.96" display | Firmware | I2C, shares SDA(GPIO21)/SCL(GPIO22) with MPU6050, address 0x3C. Hardware not yet ordered. |
 | B9 | Battery voltage readout | Firmware | 2× 100kΩ resistors voltage divider on GPIO35. Hardware not yet ordered. Add ADC read, Serial output, and BLE broadcast. |
 | B10 | `peakFatigue` tracking | `native/src/store/runStore.ts` | Track actual peak fatigue during the run separately from current fatigue, for use in post-run DoneScreen summary. |
-| B11 | Stale metrics broadcast after stopping | Firmware | Pod keeps broadcasting the last computed cad/gct/impact forever after steps stop (2026-07-18 run: `cad=29, gct=600` frozen for the final minute, generating bogus low_cad/high_fat coach events during cool-down). Fix: zero `lastCad` (and optionally lastGCT/lastImpact) when no step for >3 s. |
+| B11 | Coach fires on stale foot-pod data | Firmware + App | Two halves, confirmed by the 2026-07-18 debug log: (a) **App** — pod disconnected at 4612s but the coach kept evaluating triggers on the frozen store values for 60+ s (bogus high_fat at 4632s). Gate FP-derived triggers (low_cad, high_fat, high_imp, overpronation, GCT) on `fpConnected && (Date.now() - lastFpPacketTs < 5000)`. (b) **Firmware** — pod broadcasts the last computed cad/gct/impact forever after steps stop; zero `lastCad` when no step for >3 s. App half is the higher-value fix. |
 | B12 | Overpronation may over-trigger | Firmware | 40+ overpronation coach events in the 2026-07-18 run. Either genuine or `PRON_OVER_DEG=8°` is too tight. Blocked on B7 (slow-mo video validation). |
 
 ---
