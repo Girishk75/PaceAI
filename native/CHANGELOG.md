@@ -5,6 +5,18 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.4.3] — 2026-07-20
+
+All four fixes driven by the 2026-07-18 run analysis (12 km, coach CSV + debug log + Garmin cross-check).
+
+### Fixed
+- **GPS distance over-count (~20%)** — PaceAI recorded 12.14 km where Garmin measured 10.0 km. The odometer summed 1 Hz urban GPS jitter as real movement (any jump ≥ 3 m, accepting fixes with up to 150 m error). Distance accumulation now has its own gates: fixes worse than 35 m accuracy are ignored, movement must exceed half the fix's noise radius (min 8 m), and movements implying faster than 6.5 m/s are treated as GPS jumps and discarded. The pace smoother (which matched Garmin) is untouched.
+- **Coach no longer fires on stale foot-pod data** — when the pod disconnected at 1:16:52 the coach kept generating advice from the frozen last packet ("cadence 29!") for over a minute. All pod-derived triggers (low_cad, high_imp, high_fat, heel_strike, overpronation) now require the pod connected and a packet within the last 5 s.
+- **`coachMuted` now resets on run start** — muting the coach once left it silent for every subsequent run (root cause of the earlier 92-minute silent run).
+- **BLE monitor-error race guarded** — a late monitor error after a normal disconnect (seen in the 2026-07-18 log) could call `cancelConnection()` blindly, potentially tearing down an already re-established connection. Both FP and HR handlers now only cancel if the erroring device is still the live one.
+
+---
+
 ## [2.4.2] — 2026-07-05
 
 ### Fixed

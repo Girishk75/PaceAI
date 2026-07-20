@@ -21,6 +21,12 @@ export function checkTrigger(s: RunState): string | null {
   const cad   = s.cadence;
   const imp   = s.impact;
 
+  // Foot-pod triggers are only meaningful while the pod is actually streaming.
+  // After a disconnect the store keeps the last packet's values frozen — the
+  // 2026-07-18 run produced ghost low_cad/high_fat advice for a full minute
+  // after the pod dropped (B11). 5s window = 5 missed 1 Hz packets.
+  const fpFresh = s.fpConnected && (now - s.lastFpPacketTs) < 5000;
+
   // Run start — fire once in the 3–6s window. The exact-second check (el===3)
   // misses if tick() skips second 3 (BackgroundTimer throttled before GPS kicks in).
   // lastCoachTs===0 means run_start has never fired; that's the only guard needed.
@@ -44,22 +50,23 @@ export function checkTrigger(s: RunState): string | null {
   if (tgt > 0 && diff < -20 && (now - s.lastFastCoachTs) > 75000) return 'pace_fast';
 
   // Cadence (every 60s, after 30s elapsed)
-  if (el > 30 && cad > 0 && cad < 165 && (now - s.lastCadCoachTs) > 60000) return 'low_cad';
+  if (el > 30 && fpFresh && cad > 0 && cad < 165 && (now - s.lastCadCoachTs) > 60000) return 'low_cad';
 
   // Impact (every 90s)
-  if (imp > 7.5 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
+  if (fpFresh && imp > 7.5 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
 
-  // Fatigue (every 60s)
-  if (fat > 7 && (now - s.lastFatCoachTs) > 60000) return 'high_fat';
+  // Fatigue (every 60s) — fatigue is dominated by FP inputs (cad/GCT/impact),
+  // so it is gated on pod freshness too
+  if (fpFresh && fat > 7 && (now - s.lastFatCoachTs) > 60000) return 'high_fat';
 
   // Heel strike (>60% of classified steps, every 90s, after 30s elapsed)
-  if (el > 30 && s.strikeHeel > 0 && (now - s.lastStrikeCoachTs) > 90000) {
+  if (el > 30 && fpFresh && s.strikeHeel > 0 && (now - s.lastStrikeCoachTs) > 90000) {
     const total = s.strikeHeel + s.strikeMid + s.strikeFore;
     if (total > 0 && s.strikeHeel / total > 0.6) return 'heel_strike';
   }
 
   // Overpronation (>50% of classified steps, every 90s, after 30s elapsed)
-  if (el > 30 && s.pronOver > 0 && (now - s.lastPronCoachTs) > 90000) {
+  if (el > 30 && fpFresh && s.pronOver > 0 && (now - s.lastPronCoachTs) > 90000) {
     const total = s.pronNeutral + s.pronOver + s.pronRigid;
     if (total > 0 && s.pronOver / total > 0.5) return 'overpronation';
   }

@@ -7,7 +7,18 @@ import { useRunStore } from '../store/runStore';
 // import must be at the top — not inside the hook function.
 
 const TASK_NAME      = 'paceai-background-location';
-const ACCURACY_THRESH = 150; // metres — relaxed for Mumbai urban
+const ACCURACY_THRESH = 150; // metres — relaxed for Mumbai urban (pace smoother input)
+
+// ── Distance accumulation gates (B13) ─────────────────────────────────────────
+// 2026-07-18 run: PaceAI recorded 12.14 km vs Garmin 10.0 km (~20% over). The
+// pace smoother matched Garmin, so the error was purely in the odometer: at
+// 1 Hz, urban GPS jitter ≥ 3 m per fix was summed as real movement. Distance
+// therefore uses much stricter gates than pace:
+//   accuracy gate  — poor fixes never move the odometer
+//   min step       — movement must exceed the fix's own noise radius
+//   speed gate     — an implied speed no runner reaches is a GPS jump, not motion
+const DIST_ACC_M    = 35;   // metres — worst fix accuracy the odometer will trust
+const MAX_RUN_SPEED = 6.5;  // m/s (~2:34/km) — above this the "movement" is a jump
 
 // ─── Background task definition (must be at module level, outside components) ──
 // expo-location's startLocationUpdatesAsync automatically creates an Android
@@ -49,6 +60,7 @@ export function useGPS() {
 
   const smoother    = useRef(new PaceSmoother());
   const lastPos     = useRef<{ lat: number; lon: number } | null>(null);
+  const lastPosTs   = useRef(0);
   const totalDistM  = useRef(0);
 
   useEffect(() => {
@@ -61,6 +73,7 @@ export function useGPS() {
 
     smoother.current.reset();
     lastPos.current    = null;
+    lastPosTs.current  = 0;
     totalDistM.current = 0;
 
     // Wire the module-level callback to this run's store/smoother state
@@ -70,14 +83,26 @@ export function useGPS() {
 
       const t = loc.timestamp;
 
+      const acc = accuracy ?? 999;
       if (lastPos.current) {
         const d = haversineMetres(lastPos.current.lat, lastPos.current.lon, lat, lon);
-        if (d >= 3) {
-          totalDistM.current += d;
-          lastPos.current = { lat, lon };
+        // Movement must exceed the fix's own noise radius before it counts.
+        // Jitter smaller than minStep never moves the anchor, so real slow
+        // movement still accumulates once it adds up past the threshold.
+        const minStep = Math.max(8, acc * 0.5);
+        if (acc <= DIST_ACC_M && d >= minStep) {
+          const dt = Math.max((t - lastPosTs.current) / 1000, 1);
+          if (d / dt <= MAX_RUN_SPEED) totalDistM.current += d;
+          // Re-anchor even when the speed gate rejects the movement — a jump
+          // must not be re-measured against the old anchor and added later.
+          lastPos.current   = { lat, lon };
+          lastPosTs.current = t;
         }
-      } else {
-        lastPos.current = { lat, lon };
+      } else if (acc <= DIST_ACC_M) {
+        // First anchor also requires a good fix — anchoring on a 100 m-error
+        // point would poison the first delta.
+        lastPos.current   = { lat, lon };
+        lastPosTs.current = t;
       }
 
       const pace = smoother.current.update(lat, lon, t);

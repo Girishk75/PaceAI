@@ -221,8 +221,11 @@ class BLEService {
       if (err) {
         // Monitor errors that aren't caused by a normal disconnect (which
         // already fires onDisconnected) need an explicit recovery kick.
+        // Guard on identity: after a normal disconnect this error fires late
+        // (seen in the 2026-07-18 run log) — a blind cancelConnection() here
+        // could tear down a connection that was already re-established.
         log(`FP monitor error: ${err.message}`);
-        device.cancelConnection().catch(() => {});
+        if (this.fp === device) device.cancelConnection().catch(() => {});
         return;
       }
       if (!char?.value) return;
@@ -265,8 +268,9 @@ class BLEService {
 
     device.monitorCharacteristicForService(HR_SERVICE, HR_MEASUREMENT_CHAR, (err, char) => {
       if (err) {
+        // Same identity guard as the FP handler — see comment there.
         log(`HR monitor error: ${err.message}`);
-        device.cancelConnection().catch(() => {});
+        if (this.hr === device) device.cancelConnection().catch(() => {});
         return;
       }
       if (!char?.value) return;

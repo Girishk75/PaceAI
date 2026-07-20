@@ -242,6 +242,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       lastCoachTs: 0,
       lastKmCoached: 0,
       hr4Coached:  false,
+      coachMuted:  false,
       lastSlowCoachTs: 0,
       lastFastCoachTs: 0,
       lastCadCoachTs:  0,
