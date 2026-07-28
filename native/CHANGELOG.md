@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.1] — 2026-07-20
+
+### Changed
+- **Removed the consolidated `paceai_coach_log.csv` export.** With per-run export now the default (Done screen "This Run CSV" and tap-to-export on any History card), the single file that concatenated every run's coach events is gone — all coach-timeline data is exported per run. The "All Runs (summary)" export (one row per run) is kept as an overview and relabelled to make clear it is a summary, not a timeline.
+
+---
+
 ## [2.6.0] — 2026-07-20
 
 ### Changed
