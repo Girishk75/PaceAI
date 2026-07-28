@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.5.0] — 2026-07-20
+
+### Added
+- **Pace-based GCT plausibility filter** (`src/algorithms/gct.ts`) — ground-contact time is driven by current pace (published force-plate norms: ~150–200 ms at 3:00/km, ~250–300 ms at easy pace), so GPS pace — which is independent and accurate — is used as a cross-check on the foot pod's GCT. Readings physically impossible for the current pace (the pod's false ~100 ms early-exits and 600 ms detection timeouts) are dropped in `updateFootPod`; the last good value is held so the fatigue index and coach never act on garbage GCT. This is a self-validating-sensor approach: it filters bad GCT without per-run firmware threshold tuning. Rejected readings are counted (`gctRejects`) and, in debug mode, logged with the rejected value and the pace window it fell outside — the data needed to confirm both this filter and the v2.5 firmware thresholds on a real run.
+
+---
+
 ## [2.4.3] — 2026-07-20
 
 All four fixes driven by the 2026-07-18 run analysis (12 km, coach CSV + debug log + Garmin cross-check).

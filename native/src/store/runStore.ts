@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { RunType, Weather, RUNNER } from '../constants/runner';
 import { calcFatigue } from '../algorithms/fatigue';
 import { formatTime } from '../algorithms/gps';
+import { isGctPlausible } from '../algorithms/gct';
 import { getHRZone, simHR } from '../algorithms/hrZone';
 import { addDebugLine } from '../services/debugLogFile';
 
@@ -58,7 +59,8 @@ export interface RunState {
   impCount:       number;
   gctSum:         number;
   gctCount:       number;
-  gct:            number;  // ms
+  gct:            number;  // ms — validated against pace (see algorithms/gct.ts)
+  gctRejects:     number;  // count of readings dropped as implausible-for-pace
   fpConnected:    boolean;
   fpRawSteps:     number;  // cumulative from ESP32
   fpStepsOffset:  number;
@@ -175,6 +177,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   impSum:  0, impCount: 0,
   gctSum:  0, gctCount: 0,
   gct:            0,
+  gctRejects:     0,
   fpConnected:    false,
   fpRawSteps:     0,
   fpStepsOffset:  -1,
@@ -252,7 +255,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       hrSum:  0, hrCount: 0, maxHR:  0,
       cadSum: 0, cadCount: 0,
       impSum: 0, impCount: 0,
-      gctSum: 0, gctCount: 0,
+      gctSum: 0, gctCount: 0, gctRejects: 0,
       strikeCode: -1, pronationCode: -1,
       strikeHeel: 0, strikeMid: 0, strikeFore: 0,
       pronNeutral: 0, pronOver: 0, pronRigid: 0,
@@ -364,6 +367,16 @@ export const useRunStore = create<RunState>((set, get) => ({
       ? impBuffer.reduce((a, b) => a + b, 0) / impBuffer.length
       : s.impact;
 
+    // GCT plausibility gate: cross-check the pod's GCT against GPS pace, which
+    // is independent and accurate. Readings that are physically impossible for
+    // the current pace (the pod's false ~100 ms early-exits and 600 ms timeouts)
+    // are dropped — the last good value is held so fatigue/coaching never see
+    // garbage. See algorithms/gct.ts. When gct<=0 the pod simply had nothing to
+    // report this packet (normal); that is a hold, not a rejection.
+    const gctOk      = isGctPlausible(gct, s.displayPace);
+    const gctVal     = gctOk ? gct : s.gct;
+    const gctRejects = (gct > 0 && !gctOk) ? s.gctRejects + 1 : s.gctRejects;
+
     // Step offset: set on first packet after run start
     const offset  = s.fpStepsOffset < 0 ? rawSteps : s.fpStepsOffset;
     const steps   = Math.max(0, rawSteps - offset);
@@ -384,7 +397,8 @@ export const useRunStore = create<RunState>((set, get) => ({
       cadence,
       impact:         impact > 0 ? smoothImpact : s.impact,
       impBuffer,
-      gct:            gct > 0 ? gct : s.gct,
+      gct:            gctVal,
+      gctRejects,
       fpRawSteps:     rawSteps,
       fpStepsOffset:  offset,
       steps,
@@ -393,8 +407,8 @@ export const useRunStore = create<RunState>((set, get) => ({
       cadCount: cadence > 0 ? s.cadCount + 1            : s.cadCount,
       impSum:   impact  > 0 ? s.impSum   + smoothImpact : s.impSum,
       impCount: impact  > 0 ? s.impCount + 1            : s.impCount,
-      gctSum:   gct     > 0 ? s.gctSum   + gct          : s.gctSum,
-      gctCount: gct     > 0 ? s.gctCount + 1            : s.gctCount,
+      gctSum:   gctOk ? s.gctSum   + gct : s.gctSum,
+      gctCount: gctOk ? s.gctCount + 1   : s.gctCount,
       strikeCode, pronationCode,
       strikeHeel, strikeMid, strikeFore,
       pronNeutral, pronOver, pronRigid,
@@ -404,8 +418,14 @@ export const useRunStore = create<RunState>((set, get) => ({
       // Index order matches firmware codes: 0=midfoot, 1=heel, 2=forefoot / 0=neutral, 1=over, 2=rigid
       const strLabel = strike >= 0 ? ['mid','heel','fore'][strike] : '-';
       const proLabel = pronation >= 0 ? ['neu','over','rig'][pronation] : '-';
+      // Flag GCT readings dropped by the pace plausibility gate, showing the
+      // rejected value and the window it fell outside of — this is the data we
+      // need to confirm the filter (and firmware v2.5 thresholds) on a real run.
+      const gctNote = (gct > 0 && !gctOk)
+        ? ` gct=${Math.round(gct)}ms REJECTED(pace ${Math.round(s.displayPace)}s/km)`
+        : ` gct=${Math.round(gctVal)}ms`;
       set({ ...base, debugLog: logEntry(s.debugLog,
-        `[FP]  cad=${cadence} imp=${impact.toFixed(2)}G gct=${Math.round(gct)}ms steps=${steps} str=${strLabel} pro=${proLabel}`) });
+        `[FP]  cad=${cadence} imp=${impact.toFixed(2)}G${gctNote} steps=${steps} str=${strLabel} pro=${proLabel}`) });
     } else {
       set(base);
     }
