@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRunStore } from '../store/runStore';
 import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
-import { saveRun, loadRuns, shareCSV, exportRunCSV } from '../services/storage';
+import { saveRun, loadRuns, loadCoachLog, shareCSV, exportRunCSV } from '../services/storage';
 
 // Minimum BLE packets classified before committing to a dominant label (~10 s at 1 Hz).
 const MIN_CLASSIFIED_SAMPLES = 10;
@@ -89,6 +89,14 @@ export function DoneScreen() {
     });
   };
 
+  // Consolidated coach log — every run's detailed coach events in one file,
+  // for cross-run trend analysis. Per-run detail is also available via
+  // exportThisRun / History tap-to-export; this is the all-runs companion.
+  const exportCoachLog = async () => {
+    const log = await loadCoachLog();
+    await shareCSV('paceai_coach_log.csv', log as any);
+  };
+
   const exportAllRuns = async () => {
     const runs = await loadRuns();
     await shareCSV('paceai_all_runs.csv', runs as any);
@@ -135,10 +143,13 @@ export function DoneScreen() {
         <View style={st.exports}>
           <Text style={st.exportLabel}>EXPORT</Text>
           <TouchableOpacity style={st.exportBtn} onPress={exportThisRun}>
-            <Text style={st.exportTxt}>⬇ This Run CSV</Text>
+            <Text style={st.exportTxt}>⬇ This Run CSV (detailed)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={st.exportBtn} onPress={exportCoachLog}>
+            <Text style={st.exportTxt}>⬇ Coach Log CSV (all runs, detailed)</Text>
           </TouchableOpacity>
           <TouchableOpacity style={st.exportBtn} onPress={exportAllRuns}>
-            <Text style={st.exportTxt}>⬇ All Runs (summary) CSV</Text>
+            <Text style={st.exportTxt}>⬇ All Runs CSV (summary)</Text>
           </TouchableOpacity>
         </View>
 

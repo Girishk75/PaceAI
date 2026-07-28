@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRunStore } from '../store/runStore';
 import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
-import { loadRuns, shareCSV, exportRunCSV, RunRecord } from '../services/storage';
+import { loadRuns, loadCoachLog, shareCSV, exportRunCSV, RunRecord } from '../services/storage';
 
 export function HistoryScreen() {
   const setScreen = useRunStore(s => s.setScreen);
@@ -16,6 +16,13 @@ export function HistoryScreen() {
 
   const exportAll = async () => {
     await shareCSV('paceai_all_runs.csv', runs as any);
+  };
+
+  // Consolidated coach log — all runs' detailed coach events in one file, for
+  // cross-run analysis. Per-run detail is available by tapping a card below.
+  const exportCoachLog = async () => {
+    const log = await loadCoachLog();
+    await shareCSV('paceai_coach_log.csv', log as any);
   };
 
   // Export a single run's own timeline (tap a card). Passes the summary record
@@ -44,7 +51,10 @@ export function HistoryScreen() {
       </View>
 
       <View style={st.exportRow}>
-        <Text style={st.hint}>Tap any run below to export just that run’s data.</Text>
+        <TouchableOpacity style={st.exportBtn} onPress={exportCoachLog}>
+          <Text style={st.exportTxt}>⬇ Coach Log CSV (all runs, detailed)</Text>
+        </TouchableOpacity>
+        <Text style={st.hint}>…or tap any run below to export just that run.</Text>
       </View>
 
       <FlatList
@@ -94,7 +104,7 @@ const st = StyleSheet.create({
   title:     { fontFamily: F.header, fontSize: 16, letterSpacing: 3, color: C.text, flex: 1 },
   export:    { fontFamily: F.header, fontSize: 12, letterSpacing: 2, color: C.blue },
   exportRow: { paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border },
-  hint:      { fontFamily: F.body, fontSize: 12, color: C.muted },
+  hint:      { fontFamily: F.body, fontSize: 12, color: C.muted, marginTop: 8 },
   exportBtn: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, alignSelf: 'flex-start' },
   exportTxt: { fontFamily: F.body, fontSize: 13, color: C.blue },
   list:      { padding: 18, gap: 10 },

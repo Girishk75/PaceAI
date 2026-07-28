@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.2] — 2026-07-20
+
+### Changed
+- **Restored the consolidated `paceai_coach_log.csv` export** (removed in 2.6.1). It carries the detailed per-event nuances (trigger, HR, zone, cadence, GCT, impact, all four fatigue components, full AI response) across every run in one file — needed for cross-run trend analysis. Per-run exports (This Run CSV, History tap-to-export) remain and carry the same detail scoped to one run. Export buttons relabelled to make the scope explicit: "This Run CSV (detailed)", "Coach Log CSV (all runs, detailed)", "All Runs CSV (summary)".
+
+---
+
 ## [2.6.1] — 2026-07-20
 
 ### Changed
