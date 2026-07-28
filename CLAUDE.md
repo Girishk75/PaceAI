@@ -51,8 +51,14 @@ firmware/        ESP32 Arduino sketches
 The user builds on **Windows** using local Gradle. Always give these exact steps:
 
 ```powershell
-# 1. Pull latest
+# 0. Make sure you are on the dev branch (work lands here, NOT on main)
 cd C:\Users\Administrator\PaceAI
+git branch --show-current
+#    if it is not claude/build-paceai-coach-N3M2x:
+#      git checkout -- native/package.json   (discard the prebuild edit, see note)
+#      git checkout claude/build-paceai-coach-N3M2x
+
+# 1. Pull latest
 git pull origin claude/build-paceai-coach-N3M2x
 
 # 2. Regenerate native Android folder (required after any app.json change)
@@ -72,3 +78,18 @@ C:\Users\Administrator\PaceAI\native\android\app\build\outputs\apk\release\app-r
 Transfer the APK to the phone manually and install it.
 
 **Never suggest** `eas build`, `eas build --local`, or `npx expo run:android` as the build method.
+
+### Always include these git-recovery steps when giving pull/build instructions
+
+`npx expo prebuild` rewrites `native/package.json` on every run, so a leftover
+local change routinely blocks the next `git pull` / `git checkout`. The user
+also often ends up on `main` (where the latest work does NOT live). Whenever you
+hand out pull or build steps, include the recovery for these up front:
+
+| Symptom on `git pull` / `git checkout` | Fix |
+|---|---|
+| `local changes to native/package.json would be overwritten` | `git checkout -- native/package.json` then re-run the command |
+| `error: unfinished merge (MERGE_HEAD exists)` | `git merge --abort` then re-pull |
+| stuck in vim (merge/commit message) | press **Esc**, type `:wq`, press **Enter** |
+| vim swap-file prompt (`.MERGE_MSG.swp`) | press **E** (edit anyway), then save |
+| file shows an old version after pulling | you are on `main` — `git checkout claude/build-paceai-coach-N3M2x` and pull that branch; also close/reopen the file in the editor (it caches) |

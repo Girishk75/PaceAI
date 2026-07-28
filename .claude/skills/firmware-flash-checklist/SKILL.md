@@ -11,13 +11,28 @@ Run this after every change to `firmware/PaceAI_FootPod_v2/PaceAI_FootPod_v2.ino
 
 ```powershell
 cd C:\Users\Administrator\PaceAI
+git branch --show-current
+#   must be claude/build-paceai-coach-N3M2x — the latest firmware lives on the
+#   branch, NOT on main. If it says main:
+#     git checkout -- native/package.json
+#     git checkout claude/build-paceai-coach-N3M2x
 git pull origin claude/build-paceai-coach-N3M2x
 ```
 
-Confirm the firmware file updated:
+Confirm the firmware file updated (close and reopen it in Arduino IDE — it caches):
 ```
 C:\Users\Administrator\PaceAI\firmware\PaceAI_FootPod_v2\PaceAI_FootPod_v2.ino
 ```
+
+**Git recovery — always try these if a pull/checkout is blocked:**
+
+| Symptom | Fix |
+|---|---|
+| `local changes to native/package.json would be overwritten` (prebuild rewrites it every build) | `git checkout -- native/package.json` then re-run |
+| `unfinished merge (MERGE_HEAD exists)` | `git merge --abort` then re-pull |
+| stuck in vim | **Esc**, then `:wq`, then **Enter** |
+| swap-file prompt (`.swp`) | press **E**, then save |
+| file still shows old version | you are on `main` — checkout the branch above; reopen the file in the editor |
 
 ## Step 2 — Flash via Arduino IDE
 
@@ -86,6 +101,12 @@ Strap pod to ankle, walk 20 steps, confirm in Serial Monitor:
 Run these commands on Windows (always use Gradle — never EAS):
 
 ```powershell
+# Ensure latest code on the dev branch first (prebuild rewrites package.json,
+# which blocks the next pull — discard it if git complains):
+cd C:\Users\Administrator\PaceAI
+git checkout -- native/package.json   # only if a pull is blocked
+git pull origin claude/build-paceai-coach-N3M2x
+
 # Regenerate native Android folder (required after any app.json/versionCode change)
 cd C:\Users\Administrator\PaceAI\native
 npx expo prebuild --platform android --clean
@@ -94,6 +115,8 @@ npx expo prebuild --platform android --clean
 cd android
 gradlew assembleRelease --rerun-tasks --no-build-cache
 ```
+
+See the Git recovery table in Step 1 for other blocked-pull symptoms.
 
 APK output:
 ```
