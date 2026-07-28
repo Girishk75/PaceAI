@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "paceai-graph": {
+      "command": "/root/.local/bin/graphify-mcp",
+      "args": ["/home/user/PaceAI/graphify-out/graph.json"]
+    }
+  }
+}
