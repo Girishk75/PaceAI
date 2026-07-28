@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRunStore } from '../store/runStore';
 import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
-import { loadRuns, loadCoachLog, shareCSV, RunRecord } from '../services/storage';
+import { loadRuns, loadCoachLog, shareCSV, exportRunCSV, RunRecord } from '../services/storage';
 
 export function HistoryScreen() {
   const setScreen = useRunStore(s => s.setScreen);
@@ -21,6 +21,19 @@ export function HistoryScreen() {
   const exportCoachLog = async () => {
     const log = await loadCoachLog();
     await shareCSV('paceai_coach_log.csv', log as any);
+  };
+
+  // Export a single run's own timeline (tap a card). Passes the summary record
+  // as the fallback for runs that fired no coach events.
+  const exportOneRun = async (r: RunRecord) => {
+    await exportRunCSV(r.runId, r.runDate, r.runTime, {
+      runId: r.runId, date: r.runDate, time: r.runTime, type: r.runType,
+      weather: r.weather, distKm: r.distKm, elapsedSecs: r.elapsedSecs,
+      avgPace: r.avgPace, avgHR: r.avgHR, maxHR: r.maxHR, steps: r.steps,
+      avgCadence: r.avgCadence, avgImpact: r.avgImpact, avgGCT: r.avgGCT,
+      avgFatigue: r.avgFatigue, peakFatigue: r.peakFatigue,
+      strike: r.strikePattern ?? '', pronation: r.pronationPattern ?? '',
+    });
   };
 
   return (
@@ -46,7 +59,7 @@ export function HistoryScreen() {
         keyExtractor={r => r.runId}
         contentContainerStyle={st.list}
         renderItem={({ item: r }) => (
-          <View style={st.card}>
+          <TouchableOpacity style={st.card} onPress={() => exportOneRun(r)} activeOpacity={0.7}>
             <View style={st.cardTop}>
               <Text style={st.cardDate}>{r.runDate} {r.runTime}</Text>
               <Text style={st.cardType}>{r.runType.toUpperCase()}</Text>
@@ -63,7 +76,8 @@ export function HistoryScreen() {
               <Stat label="FAT"    value={r.avgFatigue.toFixed(1)} />
               <Stat label="WEATHER" value={r.weather} />
             </View>
-          </View>
+            <Text style={st.tapHint}>tap to export this run ⬇</Text>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={st.empty}>No runs yet</Text>}
       />
@@ -95,6 +109,7 @@ const st = StyleSheet.create({
   cardDate:  { fontFamily: F.body, fontSize: 13, color: C.muted },
   cardType:  { fontFamily: F.header, fontSize: 11, letterSpacing: 2, color: C.green },
   cardRow:   { flexDirection: 'row' },
+  tapHint:   { fontFamily: F.header, fontSize: 8, letterSpacing: 1.5, color: C.blue, textAlign: 'right' },
   empty:     { fontFamily: F.body, fontSize: 14, color: C.muted, textAlign: 'center', marginTop: 60 },
 });
 const sc = StyleSheet.create({

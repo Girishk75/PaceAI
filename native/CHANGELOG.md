@@ -5,6 +5,17 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.0] — 2026-07-20
+
+### Changed
+- **Per-run data export instead of one consolidated file.** "Export This Run" (Done screen) now exports that run's *full* coach-event timeline — not just a one-row summary — as its own date-named file, `paceai_run_YYYY-MM-DD_HHMMSS.csv`. Previously the detailed timeline was only reachable through the consolidated "Coach Log CSV", which concatenated every run ever recorded into a single file (the source of the May–July mega-file that had to be filtered by date).
+
+### Added
+- **Tap-to-export any past run** — each card on the History screen is now tappable and exports just that run's timeline as its own date-named file. Pulling a single old run no longer requires exporting and grepping the whole consolidated log.
+- Reusable `exportRunCSV(runId, date, time, summaryRow?)` helper in `storage.ts`; the consolidated `exportCoachLog` / `exportAllRuns` exports remain available.
+
+---
+
 ## [2.5.0] — 2026-07-20
 
 ### Added

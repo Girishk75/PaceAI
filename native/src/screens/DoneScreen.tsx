@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRunStore } from '../store/runStore';
 import { C, F } from '../theme';
 import { formatTime, formatPace } from '../algorithms/gps';
-import { saveRun, loadRuns, loadCoachLog, shareCSV } from '../services/storage';
+import { saveRun, loadRuns, loadCoachLog, shareCSV, exportRunCSV } from '../services/storage';
 
 // Minimum BLE packets classified before committing to a dominant label (~10 s at 1 Hz).
 const MIN_CLASSIFIED_SAMPLES = 10;
@@ -65,7 +65,10 @@ export function DoneScreen() {
   }, []);
 
   const exportThisRun = async () => {
-    const rows = [{
+    // Export this run's full per-event coach timeline as its own date-named
+    // file (paceai_run_YYYY-MM-DD_HHMMSS.csv). If no coach events fired, the
+    // one-row summary below is used as a fallback so the export is never empty.
+    await exportRunCSV(s.runId, s.runDate, s.runTime, {
       runId:       s.runId,
       date:        s.runDate,
       time:        s.runTime,
@@ -83,8 +86,7 @@ export function DoneScreen() {
       fatigue:     s.fatigueTotal.toFixed(2),
       strike:      domStrike   ?? '',
       pronation:   domPron     ?? '',
-    }];
-    await shareCSV(`paceai_run_${s.runId}.csv`, rows as any);
+    });
   };
 
   const exportCoachLog = async () => {

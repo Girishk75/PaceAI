@@ -138,6 +138,32 @@ export async function shareCSV(filename: string, rows: Record<string, unknown>[]
   await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: `Export ${filename}` });
 }
 
+// Human-readable, per-run filename — e.g. paceai_run_2026-07-18_061707.csv.
+// Keeps each run's data in its own clearly-dated file instead of one growing
+// consolidated log.
+export function runFileName(date: string, time: string, ext: string): string {
+  return `paceai_run_${date}_${time.replace(/:/g, '')}.${ext}`;
+}
+
+// Export ONE run as its own file: the full per-event coach timeline for that
+// run, filtered out of the consolidated log, named by date. Falls back to a
+// caller-supplied one-row summary if the run fired no coach events. This is the
+// per-run counterpart to the consolidated exportCoachLog / exportAllRuns.
+export async function exportRunCSV(
+  runId: string,
+  date: string,
+  time: string,
+  summaryRow?: Record<string, unknown>,
+): Promise<void> {
+  const all    = await loadCoachLog();
+  const events = all.filter(e => e.runId === runId);
+  const rows: Record<string, unknown>[] = events.length
+    ? (events as unknown as Record<string, unknown>[])
+    : (summaryRow ? [summaryRow] : []);
+  if (!rows.length) return;
+  await shareCSV(runFileName(date, time, 'csv'), rows);
+}
+
 // Copies the live coach CSV (written after each event) to a timestamp-named file.
 // Falls back to AsyncStorage if the live file doesn't exist (e.g. no coach events fired).
 export async function saveCoachLogForRun(runId: string, timestamp: string): Promise<void> {
