@@ -12,6 +12,7 @@ When an item is fixed, move it to the Done section with the version it shipped i
 | ID | Item | File | Notes |
 |---|---|---|---|
 | B3 | No scan fallback after repeated direct reconnect failures | `native/src/services/bleService.ts:316` | After 3 failed direct reconnects, fall back to `startScan()`. Currently retries direct connect indefinitely. |
+| B14 | CSV export escaping corrupts `aiResponse` | `native/src/services/storage.ts` (`toCSV`) | `toCSV` uses `JSON.stringify` per field → JSON escaping (`\"`) instead of RFC-4180 CSV (`""`). Any field with a comma or quote (i.e. most `aiResponse` cells) spills across columns and shows `\Girish` / trailing `\""` artifacts. Confirmed in the 2026-07-18 coach log. Affects ALL CSV exports (coach log, per-run, all runs). Fix: proper CSV escaping — wrap each field in `"`, double internal `"`, strip stray control chars. **Deferred to next build per user (2026-07-20).** |
 
 ---
 
