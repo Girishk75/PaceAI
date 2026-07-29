@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.3] — 2026-07-20
+
+### Added
+- **Raw GPS-fix logging in debug mode** — `useGPS` now appends one line per raw GPS fix to the debug log: `[GPS] t=<s> lat lon acc=<m> d=<m> spd=<m/s> <reason> total=<km>`, where reason is `count` / `skip:acc` / `skip:minstep` / `skip:speed` / `skip:acc>150`. This captures the full raw fix stream plus each distance-gate decision, so the gates can be replayed and tuned offline against a reference track (e.g. a Garmin FIT export) instead of requiring a fresh run per change. Debug-mode only; no effect on release behaviour.
+
+### Context
+- Garmin FIT cross-check of the 2026-07-18 run: ground truth 10.003 km vs PaceAI 12.14 km (+21%). The over-count was **not** uniform — PaceAI tracked Garmin to ~1% for the first 60 min / 8 km, then diverged entirely in the final ~17 min (slow cool-down), confirming the error is low-speed GPS jitter, exactly what the v2.4.3 distance gates target.
+
+---
+
 ## [2.6.2] — 2026-07-20
 
 ### Changed

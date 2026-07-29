@@ -42,6 +42,20 @@ TaskManager.defineTask(TASK_NAME, ({ data, error }: any) => {
 // Module-level callback — updated by the hook so the task can reach the store
 let gpsCallback: ((loc: Location.LocationObject) => void) | null = null;
 
+// Debug-only: append one line per raw GPS fix with its inputs and the distance
+// gate's decision. `reason` is count | skip:acc | skip:minstep | skip:speed |
+// skip:acc>NNN. Coordinates at 6 dp (~0.1 m) so the raw track can be replayed.
+function logGpsFix(
+  lat: number, lon: number, acc: number,
+  d: number, spd: number, reason: string, totalM: number,
+): void {
+  const el = useRunStore.getState().elapsedSecs;
+  useRunStore.getState().appendLog(
+    `[GPS] t=${el}s lat=${lat.toFixed(6)} lon=${lon.toFixed(6)} acc=${acc.toFixed(0)}m ` +
+    `d=${d.toFixed(1)}m spd=${spd.toFixed(1)}m/s ${reason} total=${(totalM / 1000).toFixed(3)}km`,
+  );
+}
+
 // ─── One-time permission pre-warm ──────────────────────────────────────────────
 export async function prewarmGPS(): Promise<void> {
   const { status: fg } = await Location.requestForegroundPermissionsAsync();
@@ -79,20 +93,28 @@ export function useGPS() {
     // Wire the module-level callback to this run's store/smoother state
     gpsCallback = (loc: Location.LocationObject) => {
       const { latitude: lat, longitude: lon, accuracy } = loc.coords;
-      if ((accuracy ?? 999) > ACCURACY_THRESH) return;
-
-      const t = loc.timestamp;
-
+      const t   = loc.timestamp;
       const acc = accuracy ?? 999;
+      const dbg = useRunStore.getState().debugMode;
+
+      // Pace-smoother accuracy gate (unchanged). Log the drop in debug mode so
+      // the raw fix stream is complete for offline replay/tuning vs Garmin.
+      if (acc > ACCURACY_THRESH) {
+        if (dbg) logGpsFix(lat, lon, acc, 0, 0, `skip:acc>${ACCURACY_THRESH}`, totalDistM.current);
+        return;
+      }
+
+      let d = 0, spd = 0, counted = false;
       if (lastPos.current) {
-        const d = haversineMetres(lastPos.current.lat, lastPos.current.lon, lat, lon);
+        d = haversineMetres(lastPos.current.lat, lastPos.current.lon, lat, lon);
         // Movement must exceed the fix's own noise radius before it counts.
         // Jitter smaller than minStep never moves the anchor, so real slow
         // movement still accumulates once it adds up past the threshold.
         const minStep = Math.max(8, acc * 0.5);
         if (acc <= DIST_ACC_M && d >= minStep) {
           const dt = Math.max((t - lastPosTs.current) / 1000, 1);
-          if (d / dt <= MAX_RUN_SPEED) totalDistM.current += d;
+          spd = d / dt;
+          if (spd <= MAX_RUN_SPEED) { totalDistM.current += d; counted = true; }
           // Re-anchor even when the speed gate rejects the movement — a jump
           // must not be re-measured against the old anchor and added later.
           lastPos.current   = { lat, lon };
@@ -105,9 +127,20 @@ export function useGPS() {
         lastPosTs.current = t;
       }
 
+      // Raw-fix debug log: every fix with its inputs + the gate's decision.
+      // Enables replaying the distance gates offline against a reference
+      // (e.g. a Garmin FIT track) instead of needing a fresh run per tweak.
+      if (dbg) {
+        const reason = counted ? 'count'
+          : acc > DIST_ACC_M                  ? 'skip:acc'
+          : d < Math.max(8, acc * 0.5)        ? 'skip:minstep'
+          :                                     'skip:speed';
+        logGpsFix(lat, lon, acc, d, spd, reason, totalDistM.current);
+      }
+
       const pace = smoother.current.update(lat, lon, t);
       if (pace) {
-        updateGPS(pace, totalDistM.current / 1000, accuracy ?? 999);
+        updateGPS(pace, totalDistM.current / 1000, acc);
       }
     };
 
