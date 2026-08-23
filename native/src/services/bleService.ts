@@ -321,7 +321,11 @@ class BLEService {
     log(`FP retry in ${delay / 1000}s (attempt ${this.fpRetry})`);
     setTimeout(() => {
       if (this.paused || this.fp || this.fpConnecting) return;
-      if (this.savedFpId) this.reconnectFP();
+      // After 3 failed direct reconnects, fall back to a scan. A stale GATT
+      // handle or a pod that changed advertising state won't recover through
+      // repeated direct connects — seen 2026-08-23, ~20 min of failed direct
+      // reconnects mid-run, ~3000 steps lost. A scan re-discovers it by ID.
+      if (this.savedFpId && this.fpRetry <= 3) this.reconnectFP();
       else this.startScan();
     }, delay);
   }
@@ -332,7 +336,9 @@ class BLEService {
     log(`HR retry in ${delay / 1000}s (attempt ${this.hrRetry})`);
     setTimeout(() => {
       if (this.paused || this.hr || this.hrConnecting) return;
-      if (this.savedHrId) this.reconnectHR();
+      // Same scan fallback as FP: direct reconnect for the first 3 attempts,
+      // then scan to re-discover a device that won't recover via direct connect.
+      if (this.savedHrId && this.hrRetry <= 3) this.reconnectHR();
       else this.startScan();
     }, delay);
   }

@@ -286,14 +286,22 @@ export const useRunStore = create<RunState>((set, get) => ({
       ? s.gpsPace
       : simPace(s.runConfig, elapsed);
 
-    // Distance: only accumulate when wall-clock elapsed has actually advanced.
-    // tick() is called from both BackgroundTimer (1 Hz) and the GPS TaskManager (1 Hz).
-    // Without this guard, two calls in the same second each add 1/pace → distance doubles.
+    // Distance.
+    // When GPS is providing recent fixes it is the source of truth: track the
+    // gated GPS odometer (s.gpsDist) directly. The odometer already ignores
+    // standing-still jitter, so stops no longer inflate — and we do NOT add
+    // pace-integrated distance on top (the old `max(pace-integrated, gpsDist)`
+    // could only ever push the number up, which over-counted vs Garmin).
+    // Only when GPS is stale/absent (treadmill, tunnel, dense cover) do we fall
+    // back to pace integration — and then only while actually moving (cadence>0)
+    // so a stopped runner with no GPS can't gain phantom distance.
+    const gpsFresh = s.gpsPaceTs > 0 && (now - s.gpsPaceTs) <= 15000;
     let dist = s.dist;
-    if (elapsed > s.elapsedSecs) {
-      dist += 1 / paceForDist; // km per second
+    if (gpsFresh) {
+      if (s.gpsDist > dist) dist = s.gpsDist;   // follow the odometer, never go backwards
+    } else if (elapsed > s.elapsedSecs && s.cadence > 0) {
+      dist += 1 / paceForDist; // km per second — GPS-gap fallback
     }
-    if (s.gpsDist > dist) dist = s.gpsDist;
 
     // Display pace
     const displayPace = (s.gpsPace > 0 && !stale) ? s.gpsPace : simPace(s.runConfig, elapsed);

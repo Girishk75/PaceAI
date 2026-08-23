@@ -5,6 +5,20 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.4] — 2026-08-23
+
+Three fixes from the 2026-08-23 forest run, cross-checked against Garmin ground truth (10.02 km; PaceAI displayed 10.77 km, +7.5%).
+
+### Fixed
+- **Distance no longer over-counts via `max()`** — `tick()` computed `dist = max(pace-integrated, gpsDist)`, which could only ever push the number *up*, so any inflation in either source stuck. Proof: the Aug 5 treadmill showed 2.59 km while the gated GPS odometer correctly logged 0.000 km (pace-integration won the max). Now, when GPS fixes are recent, distance **tracks the gated GPS odometer directly** (the real B13 fix finally drives the displayed number); pace-integration is used only as a fallback when GPS is stale/absent.
+- **No distance accumulation while stopped** — GPS-gap pace-integration now runs only while `cadence > 0`, and the odometer already ignores standing jitter, so stops (traffic, hills, catching breath — the 4.5-min gap vs Garmin's auto-pause) no longer inflate distance.
+- **Foot-pod reconnect falls back to scanning** — after 3 failed *direct* reconnects the service now `startScan()`s to re-discover the device. On the Aug 23 run the pod dropped mid-run and spent ~20 min in failed direct reconnects, losing ~3,000 steps (9,877 recorded vs Garmin's 13,060). Applies to both foot pod and HR. (Backlog B3.)
+
+### Verified good (2026-08-23 vs Garmin)
+- HR 154 vs 155, cadence 170 vs ~171 — both accurate.
+
+---
+
 ## [2.6.3] — 2026-07-20
 
 ### Added

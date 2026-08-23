@@ -11,7 +11,7 @@ When an item is fixed, move it to the Done section with the version it shipped i
 
 | ID | Item | File | Notes |
 |---|---|---|---|
-| B3 | No scan fallback after repeated direct reconnect failures | `native/src/services/bleService.ts:316` | After 3 failed direct reconnects, fall back to `startScan()`. Currently retries direct connect indefinitely. |
+| B15 | Distance gates still ~5% high vs Garmin in dense cover/hills | `native/src/hooks/useGPS.ts` | 2026-08-23 forest run (220 m elevation): Garmin 10.02 km, gated GPS odometer 10.508 km (+4.9%). v2.6.4 made the odometer drive the displayed number (was +7.5% via the `max()` bug); remaining ~5% is GPS scatter the min-step/accuracy gates don't fully catch under canopy + hills. Consider tightening gates or an elevation/3D-aware step, but beware under-counting on clean runs. Needs more paired FIT-vs-debug-log data to tune. |
 | B14 | CSV export escaping corrupts `aiResponse` | `native/src/services/storage.ts` (`toCSV`) | `toCSV` uses `JSON.stringify` per field → JSON escaping (`\"`) instead of RFC-4180 CSV (`""`). Any field with a comma or quote (i.e. most `aiResponse` cells) spills across columns and shows `\Girish` / trailing `\""` artifacts. Confirmed in the 2026-07-18 coach log. Affects ALL CSV exports (coach log, per-run, all runs). Fix: proper CSV escaping — wrap each field in `"`, double internal `"`, strip stray control chars. **Deferred to next build per user (2026-07-20).** |
 
 ---
@@ -51,3 +51,5 @@ When an item is fixed, move it to the Done section with the version it shipped i
 | D6 | `coachMuted` not reset in `startRun()` | v2.4.3 | Was B1. Muting once silenced the coach for all later runs (root cause of the 92-min silent run). |
 | D7 | Coach fired on stale foot-pod data | v2.4.3 | App half of B11. All FP-derived triggers now require `fpConnected` + packet within 5 s. Confirmed cause of ghost "cadence 29" advice after the 4612s disconnect on 2026-07-18. |
 | D8 | BLE monitor error → `cancelConnection()` race | v2.4.3 | Was B2, confirmed in the 2026-07-18 log. Both FP and HR monitor-error handlers now cancel only if the erroring device is still the live one (guard chosen over full removal so a live-but-broken monitor still recovers — HR has no watchdog). |
+| D9 | Distance displayed via `max(pace, gps)` over-count | v2.6.4 | `tick()` took the larger of pace-integrated and GPS odometer, so it could only inflate. Now GPS odometer is primary when fixes are fresh; pace-integration is a moving-only fallback. Proven by Aug-5 treadmill (showed 2.59 km vs odometer's 0.0) and Aug-23 forest (10.77 shown vs Garmin 10.02). Residual ~5% tracked as B15. |
+| D10 | No scan fallback after repeated direct reconnects | v2.6.4 | Was B3. After 3 failed direct reconnects, FP and HR now fall back to `startScan()`. Aug-23 pod dropped mid-run, ~20 min of failed direct reconnects, ~3000 steps lost. |
