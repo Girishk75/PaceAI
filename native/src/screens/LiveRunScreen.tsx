@@ -86,10 +86,16 @@ export function LiveRunScreen() {
       st.markCoach(trigger);
       st.appendLog(`[coach] ${trigger} at ${storeRef.current.elapsedSecs}s`);
       const text = await fireCoach(trigger, storeRef.current);
+      // Re-check mute AFTER the 1–2s network call — the user may have muted
+      // while the request was in flight. Without this, an in-flight cue speaks
+      // over a fresh mute ("muted but audio kept playing"). storeRef.current is
+      // kept live by the store subscription, so it sees the new mute state.
       if (text) {
-        setLastMsg(text);
-        st.setSpeaking(true);
-        speak(text, () => st.setSpeaking(false));
+        setLastMsg(text);                       // still show it on the COACH page
+        if (!storeRef.current.coachMuted) {
+          st.setSpeaking(true);
+          speak(text, () => st.setSpeaking(false));
+        }
       }
     }, 1000);
 

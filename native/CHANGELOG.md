@@ -5,6 +5,16 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.5] — 2026-08-25
+
+### Fixed
+- **Mute now stops a cue that was already being fetched.** The coach loop checked `coachMuted` *before* the 1–2s Claude API call but spoke the reply *after* it, so muting during that window let an in-flight cue speak anyway ("muted but audio kept playing"). Mute is now re-checked after the network call, immediately before `speak()`; when muted, the cue text still appears on the COACH page but is not spoken.
+
+### Known / still open
+- **Coach still goes silent when the phone loses internet mid-run** (2026-08-25 run: only 2 cues logged, both in the first 14s, then the network dropped and every later Claude call failed). The coaching is 100% cloud-dependent — an offline rule-based fallback is the fix (tracked in BACKLOG).
+
+---
+
 ## [2.6.4] — 2026-08-23
 
 Three fixes from the 2026-08-23 forest run, cross-checked against Garmin ground truth (10.02 km; PaceAI displayed 10.77 km, +7.5%).
