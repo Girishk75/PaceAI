@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRunStore, RunConfig } from '../store/runStore';
 import { C, F } from '../theme';
 import { RUN_TYPES, WEATHER_OPTIONS, RunType, Weather } from '../constants/runner';
-import { prewarmGPS } from '../hooks/useGPS';
+import * as Location from 'expo-location';
 import { loadSettings } from '../services/storage';
 import { bleService } from '../services/bleService';
 
@@ -18,7 +18,7 @@ export function SetupScreen() {
   const [targetDist,  setTargetDist]  = useState('5');
   const [targetPace,  setTargetPace]  = useState('');  // e.g. "5:30"
   const [weather,     setWeather]     = useState<Weather>('humid');
-  const [prewarmed,      setPrewarmed]      = useState(false);
+  const [gpsReady,       setGpsReady]       = useState(false);
   const [savedHrName,    setSavedHrName]    = useState('');
   const [savedFpName,    setSavedFpName]    = useState('');
   const [recalCountdown, setRecalCountdown] = useState<number | null>(null);
@@ -28,6 +28,27 @@ export function SetupScreen() {
       setSavedHrName(cfg.hrDeviceName);
       setSavedFpName(cfg.fpDeviceName);
     });
+  }, []);
+
+  // Warm GPS while the setup screen is open so tracking is live the instant
+  // START RUN is tapped — no blocking cold-fix on start (that was the lag).
+  // Marks 'ready' only on a genuine lock (accuracy ≤ 50 m); a coarse cell fix
+  // doesn't count. The subscription is removed when leaving this screen.
+  useEffect(() => {
+    let sub: Location.LocationSubscription | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted' || cancelled) return;
+        sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 0 },
+          loc => { if ((loc.coords.accuracy ?? 999) <= 50) setGpsReady(true); },
+        );
+        if (cancelled) { sub.remove(); sub = null; }
+      } catch { /* permission/location unavailable — indicator stays "acquiring" */ }
+    })();
+    return () => { cancelled = true; sub?.remove(); };
   }, []);
 
   // Tick the recalibration countdown down to 0 then clear it
@@ -50,11 +71,11 @@ export function SetupScreen() {
     return m * 60 + (sec || 0);
   };
 
-  const handleStart = async () => {
-    if (!prewarmed) {
-      await prewarmGPS();
-      setPrewarmed(true);
-    }
+  const handleStart = () => {
+    // Start immediately — GPS has been warming since this screen opened, so
+    // there is no blocking cold-fix here (the source of the start lag). The run
+    // screen and timer begin instantly; distance/pace still take a few seconds
+    // for the first satellite lock (physics), regardless of when we start.
     const config: RunConfig = {
       runType,
       targetDist: parseFloat(targetDist) || 0,
@@ -155,6 +176,13 @@ export function SetupScreen() {
           )}
         </View>
 
+        <View style={s.gpsRow}>
+          <View style={[s.gpsDot, { backgroundColor: gpsReady ? C.green : C.warn }]} />
+          <Text style={[s.gpsTxt, { color: gpsReady ? C.green : C.muted }]}>
+            {gpsReady ? 'GPS READY' : 'ACQUIRING GPS…'}
+          </Text>
+        </View>
+
         <TouchableOpacity style={s.startBtn} onPress={handleStart}>
           <Text style={s.startTxt}>START RUN</Text>
         </TouchableOpacity>
@@ -216,7 +244,10 @@ const s = StyleSheet.create({
   chipTxtActive:{ color: C.green },
   input:        { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontFamily: F.mono, fontSize: 16, marginBottom: 4 },
   deviceStatus: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 4 },
-  startBtn:     { marginTop: 32, backgroundColor: 'rgba(0,255,163,0.15)', borderWidth: 1, borderColor: 'rgba(0,255,163,0.4)', borderRadius: 12, paddingVertical: 18, alignItems: 'center' },
+  gpsRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 24 },
+  gpsDot:       { width: 8, height: 8, borderRadius: 4 },
+  gpsTxt:       { fontFamily: F.header, fontSize: 10, letterSpacing: 2 },
+  startBtn:     { marginTop: 12, backgroundColor: 'rgba(0,255,163,0.15)', borderWidth: 1, borderColor: 'rgba(0,255,163,0.4)', borderRadius: 12, paddingVertical: 18, alignItems: 'center' },
   startTxt:     { fontFamily: F.header, fontSize: 16, fontWeight: '700', letterSpacing: 3, color: C.green },
   recalBtn:     { marginTop: 4, marginBottom: 6, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: C.muted + '55', alignItems: 'center' },
   recalBtnActive: { borderColor: C.green + '55', backgroundColor: 'rgba(0,255,163,0.05)' },

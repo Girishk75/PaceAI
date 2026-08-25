@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.7.0] — 2026-08-25
+
+### Added
+- **GPS-ready before Start — removes the start lag.** The Setup screen now warms GPS while you configure the run (`watchPositionAsync`) and shows a **"ACQUIRING GPS… / GPS READY"** indicator above START RUN (amber → green once a genuine lock, accuracy ≤ 50 m, arrives). START RUN no longer blocks on a cold `getCurrentPositionAsync` — the run screen and timer start instantly. (Distance/pace still need a few seconds for the first satellite lock — physics — but the app no longer freezes on the Start button.) The GPS watch is removed when leaving the Setup screen. START RUN stays enabled at all times so treadmill/no-GPS runs are unaffected.
+
+---
+
 ## [2.6.8] — 2026-08-25
 
 ### Changed
