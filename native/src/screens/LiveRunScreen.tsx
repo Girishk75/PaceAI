@@ -40,6 +40,7 @@ export function LiveRunScreen() {
   const storeRef   = useRef(useRunStore.getState());
   const timerRef   = useRef<number | null>(null);
   const scrollRef  = useRef<ScrollView>(null);
+  const speakingSinceRef = useRef(0);   // wall-clock when the current cue started speaking
 
   // Zone color drives accent across all pages
   const zoneColor = ZONE_COLOR[s.hrZone] || C.blue;
@@ -79,7 +80,18 @@ export function LiveRunScreen() {
       if (!st.running) return;
       st.tick();
 
-      if (st.coachMuted || st.isSpeaking) return;
+      // Self-heal a stuck 'isSpeaking'. A missed TTS finish/cancel event (or a
+      // throttled safety timer) can leave it true and block ALL coaching for the
+      // rest of the run. If it has outlasted any real cue, clear it.
+      if (st.isSpeaking && Date.now() - speakingSinceRef.current > 35000) {
+        st.setSpeaking(false);
+      }
+
+      // Mute is AUDIO-ONLY: it must not stop coaching/logging, only the spoken
+      // output (guarded at speak() below). So we gate the loop on isSpeaking
+      // (avoid overlapping cues) but NOT on coachMuted — cues keep reaching the
+      // COACH page and the CSV while muted.
+      if (storeRef.current.isSpeaking) return;
       const trigger = checkTrigger(storeRef.current);
       if (!trigger) return;
 
@@ -94,6 +106,7 @@ export function LiveRunScreen() {
         setLastMsg(text);                       // still show it on the COACH page
         if (!storeRef.current.coachMuted) {
           st.setSpeaking(true);
+          speakingSinceRef.current = Date.now();
           speak(text, () => st.setSpeaking(false));
         }
       }

@@ -5,6 +5,15 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.6] — 2026-08-25
+
+### Fixed — root cause of the recurring "coach goes silent after ~2 cues"
+Earlier this was blamed on lost internet. That was **wrong** — the user confirmed full coverage. The real causes, both in the coach loop (`LiveRunScreen`), and both consistent with the pattern seen across the 2026-08-23 and 2026-08-25 runs (run_start + pace_fast, then silence for the whole run while GPS logged fine):
+- **Mute killed the entire coach, not just audio.** The loop returned early on `coachMuted`, so muting stopped triggering, API calls, and CSV logging — not only the sound. Mute is now **audio-only**: cues keep reaching the COACH page and the CSV while muted; only `speak()` is suppressed.
+- **A stuck `isSpeaking` flag could freeze coaching permanently.** If a TTS finish/cancel event was missed (common on Android) and the in-`speak()` 30s safety `setTimeout` was throttled, `isSpeaking` stayed true and the loop blocked every future cue for the rest of the run. Added a loop-level self-heal (driven by the doze-resistant BackgroundTimer): if `isSpeaking` has been true longer than any real cue could last (35s), it is force-reset.
+
+---
+
 ## [2.6.5] — 2026-08-25
 
 ### Fixed
