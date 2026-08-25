@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.8] — 2026-08-25
+
+### Changed
+- **Less robotic coach voice.** `initTTS()` no longer relies on Android's default TTS voice (often the low-quality/robotic one). It now enumerates installed voices and selects the highest-quality, offline-capable English voice, preferring en-IN → en-GB → en-US, and falls back to the system default if nothing better is installed. The quality ceiling is whatever voice data the device has — installing a high-quality English voice under Android's Text-to-speech settings lets the app pick it up automatically. Voice selection only; no change to what is spoken.
+
+---
+
 ## [2.6.7] — 2026-08-25
 
 ### Fixed

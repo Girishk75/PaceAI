@@ -181,9 +181,49 @@ export function initTTS(): void {
     Tts.setDefaultRate(0.85);   // slightly below normal — clear for outdoor use
     Tts.setDefaultPitch(1.0);
     Tts.setDucking(true);       // enables audio ducking on Android
+    selectBestVoice();          // upgrade off the default (often robotic) voice
   }).catch(() => {
     // TTS engine not available — coaching will silently skip
   });
+}
+
+// Minimal shape of a react-native-tts voice entry (avoids a raw `any` cast).
+interface TtsVoice {
+  id: string;
+  language: string;
+  quality?: number;                  // higher = better (Android: 300 normal … 500 very high)
+  notInstalled?: boolean;
+  networkConnectionRequired?: boolean;
+}
+
+// Android hands us a default TTS voice that is frequently the low-quality/robotic
+// one. Select the highest-quality installed, offline-capable English voice
+// instead — preferring en-IN → en-GB → en-US. This is a free upgrade; the
+// quality ceiling is whatever voice data is installed on the device (Google TTS
+// → Install voice data). Keeps the system default if nothing better is found.
+async function selectBestVoice(): Promise<void> {
+  try {
+    const voices = (await Tts.voices()) as TtsVoice[];
+    const en = (voices || []).filter(v =>
+      v && !v.notInstalled && !v.networkConnectionRequired &&
+      typeof v.language === 'string' && v.language.toLowerCase().startsWith('en'));
+    if (!en.length) return;          // nothing better available — keep default
+
+    const accentRank = (lang: string): number => {
+      const l = lang.toLowerCase();
+      if (l.startsWith('en-in')) return 3;
+      if (l.startsWith('en-gb')) return 2;
+      if (l.startsWith('en-us')) return 1;
+      return 0;
+    };
+    en.sort((a, b) =>
+      ((b.quality ?? 0) - (a.quality ?? 0)) ||          // quality first (less robotic)
+      (accentRank(b.language) - accentRank(a.language)) // then preferred accent
+    );
+    await Tts.setDefaultVoice(en[0].id);
+  } catch {
+    // voice enumeration/selection unsupported on this engine — keep default
+  }
 }
 
 export function speak(text: string, onDone?: () => void): void {
