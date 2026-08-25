@@ -18,6 +18,7 @@ import { useRunStore } from './src/store/runStore';
 import { useBLE } from './src/hooks/useBLE';
 import { prewarmGPS } from './src/hooks/useGPS';
 import { initTTS } from './src/services/aiCoach';
+import { loadSettings } from './src/services/storage';
 
 import { SetupScreen }   from './src/screens/SetupScreen';
 import { LiveRunScreen } from './src/screens/LiveRunScreen';
@@ -51,6 +52,12 @@ export default function App() {
   useEffect(() => {
     prewarmGPS();         // request permissions + seed GPS chip at startup
     initTTS();            // warm up TTS engine + enable audio ducking
+    // Apply the persisted debug setting at startup. Previously the store's
+    // debugMode was only synced from saved settings when the Settings screen
+    // was opened, so starting a run without visiting Settings left debug
+    // logging/overlay off even when the user had turned it on. Load it here so
+    // the saved value takes effect on every launch.
+    loadSettings().then(s => useRunStore.getState().setDebugMode(s.debugMode)).catch(() => {});
   }, []);
 
   if (!fontsLoaded) return null;

@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.6.7] — 2026-08-25
+
+### Fixed
+- **Debug mode now applies from the saved setting at app startup.** Previously the store's `debugMode` was synced from persisted settings *only* when the Settings screen was opened; on a fresh launch it defaulted to off, so starting a run without visiting Settings first left the debug overlay and GPS/sensor logging disabled even when the user had turned debug on. `App` now loads the saved setting at startup (`loadSettings().then(... setDebugMode ...)`), so the persisted value takes effect on every launch — no need to open Settings before each run.
+
+---
+
 ## [2.6.6] — 2026-08-25
 
 ### Fixed — root cause of the recurring "coach goes silent after ~2 cues"
