@@ -27,48 +27,68 @@ export function checkTrigger(s: RunState): string | null {
   // after the pod dropped (B11). 5s window = 5 missed 1 Hz packets.
   const fpFresh = s.fpConnected && (now - s.lastFpPacketTs) < 5000;
 
+  // ── Coach cadence rules (v2.7.1) ────────────────────────────────────────────
+  // RULE 1 ("talk less"): at most one cue per GLOBAL_GAP_MS. The 2026-09-03 run
+  // fired ~1 cue every 15s; this caps it. Exceptions that bypass the gap:
+  // run_start, km milestones, and Zone-5 (a safety alert) — see below.
+  const GLOBAL_GAP_MS = 40000;
+  const quiet = (now - s.lastCoachTs) < GLOBAL_GAP_MS;
+
+  // RULE 2 ("say one thing, not four"): when pace is off-target or HR is Zone 4+,
+  // the impact / fatigue / cadence / strike / pronation cues are all *symptoms*
+  // of running too hard. Suppress those so the coach speaks the one root cause
+  // (pace/HR) instead of four alerts describing its side-effects.
+  const rootActive = (tgt > 0 && Math.abs(diff) > 20) || zone >= 4;
+
+  // — Always allowed (bypass the global gap) —
   // Run start — fire once in the 3–6s window. The exact-second check (el===3)
   // misses if tick() skips second 3 (BackgroundTimer throttled before GPS kicks in).
-  // lastCoachTs===0 means run_start has never fired; that's the only guard needed.
   if (el >= 3 && el <= 6 && s.lastCoachTs === 0) return 'run_start';
-
-  // 2-min check-in every 120s — same double-fire guard
-  if (el > 0 && el % 120 === 0 && (now - s.lastCoachTs) > 5000) return '2min_checkin';
 
   // km milestones
   const km = Math.floor(dist);
   if (km > 0 && km > s.lastKmCoached) return `km_${km}`;
 
+  // HR zone 5 — safety, every 30s
+  if (zone === 5 && (now - s.lastZ5CoachTs) > 30000) return 'z5';
+
+  // — Everything below obeys the global gap (RULE 1) —
+  if (quiet) return null;
+
+  // 2-min check-in
+  if (el > 0 && el % 120 === 0 && (now - s.lastCoachTs) > 5000) return '2min_checkin';
+
   // HR zone 4 — first entry only
   if (zone === 4 && !s.hr4Coached) return 'z4_entry';
 
-  // HR zone 5 — every 30s
-  if (zone === 5 && (now - s.lastZ5CoachTs) > 30000) return 'z5';
-
-  // Pace alerts (every 75s)
+  // Pace alerts (root cause — highest priority of the conditions, every 75s)
   if (tgt > 0 && diff > 20 && (now - s.lastSlowCoachTs) > 75000) return 'pace_slow';
   if (tgt > 0 && diff < -20 && (now - s.lastFastCoachTs) > 75000) return 'pace_fast';
 
-  // Cadence (every 60s, after 30s elapsed)
-  if (el > 30 && fpFresh && cad > 0 && cad < 165 && (now - s.lastCadCoachTs) > 60000) return 'low_cad';
+  // Symptom cues — suppressed while a root cause (pace/HR) is active (RULE 2),
+  // since they are consequences of running too hard.
+  if (!rootActive) {
+    // Cadence (every 60s, after 30s elapsed)
+    if (el > 30 && fpFresh && cad > 0 && cad < 165 && (now - s.lastCadCoachTs) > 60000) return 'low_cad';
 
-  // Impact (every 90s)
-  if (fpFresh && imp > 7.5 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
+    // Impact (every 90s)
+    if (fpFresh && imp > 7.5 && (now - s.lastImpCoachTs) > 90000) return 'high_imp';
 
-  // Fatigue (every 60s) — fatigue is dominated by FP inputs (cad/GCT/impact),
-  // so it is gated on pod freshness too
-  if (fpFresh && fat > 7 && (now - s.lastFatCoachTs) > 60000) return 'high_fat';
+    // Fatigue (every 60s) — fatigue is dominated by FP inputs (cad/GCT/impact),
+    // so it is gated on pod freshness too
+    if (fpFresh && fat > 7 && (now - s.lastFatCoachTs) > 60000) return 'high_fat';
 
-  // Heel strike (>60% of classified steps, every 90s, after 30s elapsed)
-  if (el > 30 && fpFresh && s.strikeHeel > 0 && (now - s.lastStrikeCoachTs) > 90000) {
-    const total = s.strikeHeel + s.strikeMid + s.strikeFore;
-    if (total > 0 && s.strikeHeel / total > 0.6) return 'heel_strike';
-  }
+    // Heel strike (>60% of classified steps, every 90s, after 30s elapsed)
+    if (el > 30 && fpFresh && s.strikeHeel > 0 && (now - s.lastStrikeCoachTs) > 90000) {
+      const total = s.strikeHeel + s.strikeMid + s.strikeFore;
+      if (total > 0 && s.strikeHeel / total > 0.6) return 'heel_strike';
+    }
 
-  // Overpronation (>50% of classified steps, every 90s, after 30s elapsed)
-  if (el > 30 && fpFresh && s.pronOver > 0 && (now - s.lastPronCoachTs) > 90000) {
-    const total = s.pronNeutral + s.pronOver + s.pronRigid;
-    if (total > 0 && s.pronOver / total > 0.5) return 'overpronation';
+    // Overpronation (>50% of classified steps, every 90s, after 30s elapsed)
+    if (el > 30 && fpFresh && s.pronOver > 0 && (now - s.lastPronCoachTs) > 90000) {
+      const total = s.pronNeutral + s.pronOver + s.pronRigid;
+      if (total > 0 && s.pronOver / total > 0.5) return 'overpronation';
+    }
   }
 
   return null;
@@ -181,49 +201,14 @@ export function initTTS(): void {
     Tts.setDefaultRate(0.85);   // slightly below normal — clear for outdoor use
     Tts.setDefaultPitch(1.0);
     Tts.setDucking(true);       // enables audio ducking on Android
-    selectBestVoice();          // upgrade off the default (often robotic) voice
+    // NOTE: we deliberately do NOT override the voice. v2.6.8 tried to auto-pick
+    // a "best" voice but on the OnePlus 11R it selected a robotic one while the
+    // good system-default voice (the one Android's TTS preview plays) was
+    // ignored. The OS is the source of truth for voice — the user chooses and
+    // previews it in Android Text-to-speech settings — so we respect it. (B19)
   }).catch(() => {
     // TTS engine not available — coaching will silently skip
   });
-}
-
-// Minimal shape of a react-native-tts voice entry (avoids a raw `any` cast).
-interface TtsVoice {
-  id: string;
-  language: string;
-  quality?: number;                  // higher = better (Android: 300 normal … 500 very high)
-  notInstalled?: boolean;
-  networkConnectionRequired?: boolean;
-}
-
-// Android hands us a default TTS voice that is frequently the low-quality/robotic
-// one. Select the highest-quality installed, offline-capable English voice
-// instead — preferring en-IN → en-GB → en-US. This is a free upgrade; the
-// quality ceiling is whatever voice data is installed on the device (Google TTS
-// → Install voice data). Keeps the system default if nothing better is found.
-async function selectBestVoice(): Promise<void> {
-  try {
-    const voices = (await Tts.voices()) as TtsVoice[];
-    const en = (voices || []).filter(v =>
-      v && !v.notInstalled && !v.networkConnectionRequired &&
-      typeof v.language === 'string' && v.language.toLowerCase().startsWith('en'));
-    if (!en.length) return;          // nothing better available — keep default
-
-    const accentRank = (lang: string): number => {
-      const l = lang.toLowerCase();
-      if (l.startsWith('en-in')) return 3;
-      if (l.startsWith('en-gb')) return 2;
-      if (l.startsWith('en-us')) return 1;
-      return 0;
-    };
-    en.sort((a, b) =>
-      ((b.quality ?? 0) - (a.quality ?? 0)) ||          // quality first (less robotic)
-      (accentRank(b.language) - accentRank(a.language)) // then preferred accent
-    );
-    await Tts.setDefaultVoice(en[0].id);
-  } catch {
-    // voice enumeration/selection unsupported on this engine — keep default
-  }
 }
 
 export function speak(text: string, onDone?: () => void): void {

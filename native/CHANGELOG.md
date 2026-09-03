@@ -5,6 +5,17 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.7.1] — 2026-09-03
+
+Driven by the 2026-09-03 run (34 min, 132 cues ≈ one every 15s). Garmin confirmed the runner averaged 6:29/km vs a 7:30 target — so the coach's *detection* was correct; the *delivery* was the problem.
+
+### Changed
+- **Coach talks less (Rule 1).** A global minimum gap of 40s between cues, replacing the old per-trigger cooldowns that collectively fired every ~15s. Exceptions that bypass the gap: run start, km milestones, and Zone-5 (safety).
+- **Coach says one thing, not four (Rule 2).** When pace is off-target or HR is Zone 4+, the impact / fatigue / cadence / strike / pronation cues are suppressed — they are symptoms of running too hard, so the coach speaks the one root cause (pace/HR) instead of four alerts describing its side-effects.
+- **Reverted the v2.6.8 voice override (B19).** It auto-picked a "best" voice but on the OnePlus 11R selected a robotic one while ignoring the good system-default voice. The app now respects whatever voice the user selects in Android's Text-to-speech settings.
+
+---
+
 ## [2.7.0] — 2026-08-25
 
 ### Added

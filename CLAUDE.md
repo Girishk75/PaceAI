@@ -1,5 +1,14 @@
 # PaceAI — Claude Code Guidelines
 
+## Working style (how to communicate with this user)
+
+- **Explain in plain language.** No jargon, no code-speak, no long technical write-ups unless asked. Use everyday words and short analogies (e.g. "a real coach says it once, then changes tack"). If a technical term is unavoidable, define it in one plain phrase. When in doubt, simpler.
+- **Always confirm before changing the repo.** Investigate and analyse freely, but propose the fix and wait for an explicit "yes" before editing code, bumping versions, committing, or pushing.
+- **Take baby steps.** Diagnose one thing at a time; don't jump straight to fixing. Always consider how a change connects to previous changes and the rest of the system before making it.
+
+---
+
+
 ## Versioning (MANDATORY on every code change)
 
 Every commit that changes app behaviour **must** bump the version in both files:
