@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import BackgroundTimer from 'react-native-background-timer';
 import { PaceSmoother, haversineMetres } from '../algorithms/gps';
 import { useRunStore } from '../store/runStore';
 // useRunStore is also used at module level (inside the TaskManager task) so the
@@ -20,6 +21,30 @@ const ACCURACY_THRESH = 150; // metres — relaxed for Mumbai urban (pace smooth
 const DIST_ACC_M    = 35;   // metres — worst fix accuracy the odometer will trust
 const MAX_RUN_SPEED = 6.5;  // m/s (~2:34/km) — above this the "movement" is a jump
 
+// Location-service options — shared by the initial start and the watchdog restart.
+const LOCATION_OPTIONS = {
+  accuracy:            Location.Accuracy.BestForNavigation,
+  timeInterval:        1000,   // request update every 1s
+  distanceInterval:    1,      // also trigger on any movement ≥ 1m
+  foregroundService: {
+    notificationTitle: 'PaceAI Running',
+    notificationBody:  'GPS tracking active — screen can be locked',
+    notificationColor: '#00ffa3',
+  },
+  activityType:                     Location.ActivityType.Fitness,
+  pausesUpdatesAutomatically:       false,
+  showsBackgroundLocationIndicator: true,
+};
+
+// GPS watchdog state. Some Android OEMs (notably OnePlus/OxygenOS) kill the
+// location foreground service mid-run even with battery optimisation off
+// (2026-09-26: GPS died ~20 min into a 14 km run, distance then estimated from
+// pace and came up ~9% short vs Garmin). If no fix arrives for GPS_STALE_MS
+// while running, the watchdog restarts location updates.
+const GPS_STALE_MS = 90_000;
+let lastGpsFixMs = 0;                                       // wall-clock of the last delivered fix
+let gpsWatchdog: number | null = null;
+
 // ─── Background task definition (must be at module level, outside components) ──
 // expo-location's startLocationUpdatesAsync automatically creates an Android
 // ForegroundService with a persistent notification — free, no license needed.
@@ -30,6 +55,7 @@ const MAX_RUN_SPEED = 6.5;  // m/s (~2:34/km) — above this the "movement" is a
 // The GPS foreground service is battery-exempt so this callback always fires.
 TaskManager.defineTask(TASK_NAME, ({ data, error }: any) => {
   if (error || !data?.locations?.length) return;
+  lastGpsFixMs = Date.now();   // record every delivered fix — the watchdog reads this
   const loc: Location.LocationObject = data.locations[data.locations.length - 1];
   // Drive the run timer — wall-clock based tick() is idempotent so calling
   // it from both here and BackgroundTimer is safe (no double-counting).
@@ -147,22 +173,29 @@ export function useGPS() {
     // Start background location with ForegroundService notification.
     // Android shows a persistent notification ("PaceAI — GPS tracking active")
     // — this is what keeps the process alive when screen locks.
-    Location.startLocationUpdatesAsync(TASK_NAME, {
-      accuracy:            Location.Accuracy.BestForNavigation,
-      timeInterval:        1000,   // request update every 1s
-      distanceInterval:    1,      // also trigger on any movement ≥ 1m
-      foregroundService: {
-        notificationTitle: 'PaceAI Running',
-        notificationBody:  'GPS tracking active — screen can be locked',
-        notificationColor: '#00ffa3',
-      },
-      activityType:                        Location.ActivityType.Fitness,
-      pausesUpdatesAutomatically:          false,
-      showsBackgroundLocationIndicator:    true,
-    }).catch(err => console.warn('GPS start error:', err));
+    lastGpsFixMs = Date.now();   // seed so the watchdog waits for the first fix
+    Location.startLocationUpdatesAsync(TASK_NAME, LOCATION_OPTIONS)
+      .catch(err => console.warn('GPS start error:', err));
+
+    // GPS watchdog — restart location updates if the OS silently kills them
+    // mid-run (see LOCATION_OPTIONS note). BackgroundTimer keeps firing while
+    // backgrounded (the coach loop proves it), unlike a plain setInterval.
+    gpsWatchdog = BackgroundTimer.setInterval(() => {
+      if (!useRunStore.getState().running || lastGpsFixMs === 0) return;
+      if (Date.now() - lastGpsFixMs > GPS_STALE_MS) {
+        useRunStore.getState().appendLog(
+          `[GPS] no fix for ${GPS_STALE_MS / 1000}s — restarting location updates`,
+        );
+        Location.stopLocationUpdatesAsync(TASK_NAME).catch(() => {}).then(() => {
+          Location.startLocationUpdatesAsync(TASK_NAME, LOCATION_OPTIONS).catch(() => {});
+        });
+        lastGpsFixMs = Date.now();   // reset so we don't restart again before it recovers
+      }
+    }, 30_000);
 
     return () => {
       Location.stopLocationUpdatesAsync(TASK_NAME).catch(() => {});
+      if (gpsWatchdog !== null) { BackgroundTimer.clearInterval(gpsWatchdog); gpsWatchdog = null; }
       gpsCallback = null;
     };
   }, [running, updateGPS]);

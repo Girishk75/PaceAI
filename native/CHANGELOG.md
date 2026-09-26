@@ -5,6 +5,13 @@ Format: `Major.Minor.Patch` — bump Minor for new features, Patch for bug fixes
 
 ---
 
+## [2.7.2] — 2026-09-26
+
+### Fixed
+- **GPS watchdog — recovers when the OS kills location mid-run.** On the 2026-09-26 14 km run, the phone's GPS stopped feeding the app ~20 minutes in (OnePlus/OxygenOS killed the location foreground service despite battery optimisation being off). Distance was then estimated from pace and came up ~9% short vs Garmin (12.79 vs 14.10 km). `useGPS` now tracks the time of the last delivered fix and, via a background-safe timer, restarts location updates if no fix arrives for 90 s while a run is active. A `[GPS] no fix for 90s — restarting` line is written to the debug log when it fires. The location-service config is now shared between the initial start and the restart.
+
+---
+
 ## [2.7.1] — 2026-09-03
 
 Driven by the 2026-09-03 run (34 min, 132 cues ≈ one every 15s). Garmin confirmed the runner averaged 6:29/km vs a 7:30 target — so the coach's *detection* was correct; the *delivery* was the problem.
